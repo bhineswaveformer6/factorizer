@@ -8,6 +8,7 @@ import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
 import AnalyzePage from "@/pages/analyze";
 import RealityLensPage from "@/pages/reality-lens";
+import WidgetPage from "@/pages/widget";
 
 function AppRouter() {
   return (
@@ -15,6 +16,7 @@ function AppRouter() {
       <Route path="/" component={LandingPage} />
       <Route path="/analyze" component={AnalyzePage} />
       <Route path="/reality-lens" component={RealityLensPage} />
+      <Route path="/widget" component={WidgetPage} />
       <Route path="/reports" component={AnalyzePage} />
       <Route path="/settings" component={AnalyzePage} />
       <Route component={NotFound} />

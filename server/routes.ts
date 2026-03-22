@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { analyzeProductPhoto, analyzeWithRealityLens } from "./ai-analysis";
+import { voltsVault, type VoltEventType } from "./services/voltsVault";
 import multer from "multer";
 
 // Configure multer for in-memory file upload (max 10MB)
@@ -101,6 +102,61 @@ export async function registerRoutes(
   });
 
   // ═══════════════════════════════════════════════════════════
+  // VOLTS VAULT — Event-driven VOLT minting
+  // ═══════════════════════════════════════════════════════════
+  app.post("/api/volts/mint", async (req: Request, res: Response) => {
+    try {
+      const { userId, eventType, sessionId, metadata, qtac7, graftHardness, aiAmplification } = req.body;
+      if (!userId || !eventType) {
+        res.status(400).json({ error: "userId and eventType are required" });
+        return;
+      }
+
+      const transaction = voltsVault.mint(userId, eventType as VoltEventType, {
+        sessionId,
+        metadata,
+        qtac7,
+        graftHardness,
+        aiAmplification,
+      });
+
+      console.log(`[VOLTS] Minted ${transaction.amount}V for ${userId} (${eventType})`);
+      res.json({ success: true, transaction });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  });
+
+  app.get("/api/volts/balance/:userId", async (req: Request, res: Response) => {
+    try {
+      const balance = voltsVault.getBalance(req.params.userId);
+      res.json({ success: true, balance });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  app.post("/api/volts/attest", async (req: Request, res: Response) => {
+    try {
+      const { transactionId, attesterId } = req.body;
+      const transaction = voltsVault.attest(transactionId, attesterId);
+      res.json({ success: true, transaction });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  });
+
+  app.get("/api/volts/leaderboard", async (_req: Request, res: Response) => {
+    const leaderboard = voltsVault.getLeaderboard();
+    res.json({ success: true, leaderboard });
+  });
+
+  app.get("/api/volts/rewards", async (_req: Request, res: Response) => {
+    const schedule = voltsVault.getRewardSchedule();
+    res.json({ success: true, schedule });
+  });
+
+  // ═══════════════════════════════════════════════════════════
   // HEALTH CHECK
   // ═══════════════════════════════════════════════════════════
   app.get("/api/health", (_req: Request, res: Response) => {
@@ -109,8 +165,9 @@ export async function registerRoutes(
       engines: {
         factorizer: "active",
         reality_lens: "active",
+        volts_vault: "active",
       },
-      version: "1.0.0",
+      version: "1.1.0",
       by: "Waveform Tech",
     });
   });
