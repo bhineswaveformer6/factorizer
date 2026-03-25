@@ -79,37 +79,38 @@ If you cannot identify the product clearly, still provide your best analysis wit
 
 export async function analyzeProductPhoto(imageBase64: string, mimeType: string): Promise<any> {
   try {
-    const response = await openai.responses.create({
-      model: "gpt_5_4",
-      instructions: FACTORIZER_SYSTEM_PROMPT,
-      input: [
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      response_format: { type: "json_object" },
+      messages: [
         {
-          type: "input_text",
-          text: "Analyze this product photo. Identify all visible components, estimate materials, calculate manufacturing costs at scale, assess IP risks, and map the competitive landscape. Return the JSON analysis.",
+          role: "system",
+          content: FACTORIZER_SYSTEM_PROMPT,
         },
         {
-          type: "input_image",
-          image_url: `data:${mimeType};base64,${imageBase64}`,
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Analyze this product photo. Identify all visible components, estimate materials, calculate manufacturing costs at scale, assess IP risks, and map the competitive landscape. Return the JSON analysis.",
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:${mimeType};base64,${imageBase64}`,
+                detail: "high",
+              },
+            },
+          ],
         },
       ],
+      max_tokens: 4096,
     });
 
-    // Extract text from response
-    const text = response.output
-      .filter((block: any) => block.type === "message")
-      .flatMap((block: any) => block.content)
-      .filter((c: any) => c.type === "output_text")
-      .map((c: any) => c.text)
-      .join("");
+    const text = response.choices[0]?.message?.content || "{}";
 
-    // Parse JSON from the response (handle markdown code blocks)
-    let jsonStr = text;
-    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) {
-      jsonStr = jsonMatch[1].trim();
-    }
-
-    return JSON.parse(jsonStr);
+    // Parse JSON — response_format: json_object guarantees valid JSON
+    return JSON.parse(text);
   } catch (error: any) {
     console.error("Factorizer analysis error:", error?.message || error);
     throw new Error(`Analysis failed: ${error?.message || "Unknown error"}`);
@@ -210,30 +211,28 @@ When given a product/company/technology name, you MUST return a JSON object with
   "summary": "3-4 sentence executive summary of the full strategic analysis"
 }
 
-Be specific, data-driven, and grounded in real market knowledge. Use actual competitor names, real pricing data, real market sizes. If you're estimating, say so. Provide institutional-grade strategic intelligence — the kind a McKinsey analyst would deliver.`;
+Be specific, data-driven, and grounded in real market knowledge. Use actual competitor names, real pricing data, real market sizes. If you are estimating, say so. Provide institutional-grade strategic intelligence — the kind a McKinsey analyst would deliver.`;
 
 export async function analyzeWithRealityLens(query: string): Promise<any> {
   try {
-    const response = await openai.responses.create({
-      model: "gpt_5_4",
-      instructions: REALITY_LENS_SYSTEM_PROMPT,
-      input: `Perform a complete 5-layer strategic factorization of: "${query}"\n\nAnalyze Identity, Anatomy, Process, Economics, and Ecosystem. Provide a strategic verdict (BUILD/ACQUIRE/PARTNER/REMIX). Return the JSON analysis.`,
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: REALITY_LENS_SYSTEM_PROMPT,
+        },
+        {
+          role: "user",
+          content: `Perform a complete 5-layer strategic factorization of: "${query}"\n\nAnalyze Identity, Anatomy, Process, Economics, and Ecosystem. Provide a strategic verdict (BUILD/ACQUIRE/PARTNER/REMIX). Return the JSON analysis.`,
+        },
+      ],
+      max_tokens: 4096,
     });
 
-    const text = response.output
-      .filter((block: any) => block.type === "message")
-      .flatMap((block: any) => block.content)
-      .filter((c: any) => c.type === "output_text")
-      .map((c: any) => c.text)
-      .join("");
-
-    let jsonStr = text;
-    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) {
-      jsonStr = jsonMatch[1].trim();
-    }
-
-    return JSON.parse(jsonStr);
+    const text = response.choices[0]?.message?.content || "{}";
+    return JSON.parse(text);
   } catch (error: any) {
     console.error("Reality Lens analysis error:", error?.message || error);
     throw new Error(`Analysis failed: ${error?.message || "Unknown error"}`);
