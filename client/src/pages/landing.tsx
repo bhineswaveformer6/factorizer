@@ -9,6 +9,7 @@ import { useState, useEffect, useRef } from "react";
 import { STRIPE_CONFIG } from "@/lib/stripe";
 import { useToast } from "@/hooks/use-toast";
 import { StripeBuyButton } from "@/components/StripeBuyButton";
+import AgentCopilot from "@/components/AgentCopilot";
 
 /* ──────────────────────── SVG Logo ──────────────────────── */
 function FactorizerLogo({ className = "h-8" }: { className?: string }) {
@@ -547,6 +548,7 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+      <AgentCopilot />
     </div>
   );
 }

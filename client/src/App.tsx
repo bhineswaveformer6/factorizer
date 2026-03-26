@@ -9,6 +9,7 @@ import LandingPage from "@/pages/landing";
 import AnalyzePage from "@/pages/analyze";
 import RealityLensPage from "@/pages/reality-lens";
 import WidgetPage from "@/pages/widget";
+import AdminSignalsPage from "@/pages/admin-signals";
 
 function AppRouter() {
   return (
@@ -17,6 +18,7 @@ function AppRouter() {
       <Route path="/analyze" component={AnalyzePage} />
       <Route path="/reality-lens" component={RealityLensPage} />
       <Route path="/widget" component={WidgetPage} />
+      <Route path="/admin/signals" component={AdminSignalsPage} />
       <Route path="/reports" component={AnalyzePage} />
       <Route path="/settings" component={AnalyzePage} />
       <Route component={NotFound} />
