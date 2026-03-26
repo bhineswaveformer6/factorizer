@@ -98,6 +98,9 @@ export default function AnalyzePage() {
   const [progress, setProgress] = useState(0);
   const [aiResult, setAiResult] = useState<any>(null);
   const [useDemo, setUseDemo] = useState(false);
+  const [inputMode, setInputMode] = useState<'image' | 'url' | 'text'>('image');
+  const [urlInput, setUrlInput] = useState('');
+  const [textInput, setTextInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const actualFileRef = useRef<File | null>(null);
   const [, setLocation] = useLocation();
@@ -189,6 +192,64 @@ export default function AnalyzePage() {
     const file = e.target.files?.[0];
     if (file) handleUpload(file);
   }, [handleUpload]);
+
+  const handleTextOrUrl = useCallback(async () => {
+    const isUrl = inputMode === 'url';
+    const value = isUrl ? urlInput.trim() : textInput.trim();
+    if (!value) return;
+
+    setUploadedFile(isUrl ? value : value.substring(0, 40) + '...');
+    setAnalyzing(true);
+    setProgress(0);
+    setAnalysisComplete(false);
+    setAiResult(null);
+
+    let currentProgress = 0;
+    const interval = setInterval(() => {
+      currentProgress += Math.random() * 3 + 0.5;
+      if (currentProgress > 90) currentProgress = 90;
+      setProgress(currentProgress);
+    }, 500);
+
+    try {
+      const body = isUrl ? { url: value } : { text: value };
+      const response = await fetch('/api/factorize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      clearInterval(interval);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Analysis failed');
+      }
+
+      const data = await response.json();
+      if (data.success && data.analysis) {
+        setAiResult(data.analysis);
+        setProgress(100);
+        setAnalyzing(false);
+        setAnalysisComplete(true);
+        toast({
+          title: "Analysis Complete",
+          description: `Identified: ${data.analysis.product_name} (${Math.round(data.analysis.confidence * 100)}% confidence)`,
+        });
+      } else {
+        throw new Error('Invalid response from analysis engine');
+      }
+    } catch (error: any) {
+      clearInterval(interval);
+      setAnalyzing(false);
+      setProgress(0);
+      toast({
+        title: "Analysis Failed",
+        description: error.message || "Something went wrong. Try again.",
+        variant: "destructive",
+      });
+    }
+  }, [inputMode, urlInput, textInput, toast]);
 
   const resetAnalysis = useCallback(() => {
     setUploadedFile(null);
@@ -344,46 +405,101 @@ export default function AnalyzePage() {
 
         <div className="p-6 max-w-6xl mx-auto">
           
-          {/* ═══ Upload Zone ═══ */}
+          {/* ═══ Multi-Modal Input Zone ═══ */}
           {!uploadedFile && (
             <div className="mb-8">
-              <h1 className="text-xl font-bold mb-1">Product Analysis</h1>
-              <p className="text-sm text-[#666] mb-6">Upload a product photo to begin reverse engineering</p>
-              
-              <div
-                className="relative border-2 border-dashed border-white/10 rounded-xl p-16 text-center hover:border-[#BFA46A]/30 transition-all cursor-pointer group"
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                data-testid="upload-zone"
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".jpg,.jpeg,.png,.heic"
-                  className="hidden"
-                  onChange={handleFileInput}
-                />
-                <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-white/5 flex items-center justify-center group-hover:bg-[#BFA46A]/10 transition-colors">
-                  <Upload className="w-8 h-8 text-[#555] group-hover:text-[#BFA46A] transition-colors" />
-                </div>
-                <h3 className="text-lg font-semibold mb-2">Drop your product image here</h3>
-                <p className="text-sm text-[#666] mb-4">or click to browse</p>
-                <p className="text-xs text-[#444]">Supports JPEG, PNG, HEIC · Max 25MB</p>
-                
-                {/* Demo button */}
-                <div className="mt-8 pt-6 border-t border-white/5">
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); handleUpload(); }}
-                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-[#BFA46A] border border-[#BFA46A]/20 rounded-lg hover:bg-[#BFA46A]/5 transition-colors"
-                    data-testid="btn-demo-analysis"
+              <h1 className="text-xl font-bold mb-1">Product Intelligence</h1>
+              <p className="text-sm text-[#666] mb-6">Upload a photo, paste a URL, or describe any product — get an institutional-grade teardown in seconds.</p>
+
+              {/* Input Mode Tabs */}
+              <div className="flex gap-1 mb-4 bg-[#111] rounded-xl p-1 border border-white/5">
+                {[
+                  { id: 'image', label: 'Photo Upload', icon: '📸' },
+                  { id: 'url',   label: 'URL / Link',   icon: '🔗' },
+                  { id: 'text',  label: 'Describe It',  icon: '✏️' },
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setInputMode(tab.id as any)}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-medium transition-all ${inputMode === tab.id ? 'bg-[#BFA46A]/15 text-[#BFA46A] border border-[#BFA46A]/20' : 'text-[#555] hover:text-[#999]'}`}
                   >
-                    <Cpu className="w-4 h-4" />
-                    Run Demo Analysis
-                    <ChevronRight className="w-4 h-4" />
+                    <span>{tab.icon}</span>{tab.label}
                   </button>
-                </div>
+                ))}
               </div>
+
+              {/* Image Upload */}
+              {inputMode === 'image' && (
+                <div
+                  className="relative border-2 border-dashed border-white/10 rounded-xl p-12 text-center hover:border-[#BFA46A]/30 transition-all cursor-pointer group"
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <input ref={fileInputRef} type="file" accept=".jpg,.jpeg,.png,.heic,.webp" className="hidden" onChange={handleFileInput} />
+                  <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-white/5 flex items-center justify-center group-hover:bg-[#BFA46A]/10 transition-colors">
+                    <Upload className="w-7 h-7 text-[#555] group-hover:text-[#BFA46A] transition-colors" />
+                  </div>
+                  <h3 className="text-base font-semibold mb-1">Drop your product image here</h3>
+                  <p className="text-sm text-[#555] mb-1">JPG, PNG, HEIC, WEBP · Max 10MB</p>
+                  <p className="text-xs text-[#444]">Works with any physical product — electronics, hardware, consumer goods</p>
+                  <div className="mt-6 pt-4 border-t border-white/5">
+                    <button onClick={(e) => { e.stopPropagation(); handleUpload(); }}
+                      className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-[#BFA46A] border border-[#BFA46A]/20 rounded-lg hover:bg-[#BFA46A]/5 transition-colors">
+                      <Cpu className="w-4 h-4" /> Run Demo Analysis <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* URL Input */}
+              {inputMode === 'url' && (
+                <div className="rounded-xl border border-white/10 bg-[#0f0f0f] p-6">
+                  <p className="text-sm text-[#666] mb-3">Paste a product page URL — Amazon, company site, Kickstarter, anywhere.</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      placeholder="https://www.amazon.com/dp/... or any product page"
+                      value={urlInput}
+                      onChange={e => setUrlInput(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && urlInput.trim() && handleTextOrUrl()}
+                      className="flex-1 bg-[#1a1a1a] border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder:text-[#444] focus:outline-none focus:border-[#BFA46A]/40"
+                    />
+                    <button
+                      onClick={handleTextOrUrl}
+                      disabled={!urlInput.trim()}
+                      className="px-5 py-3 bg-[#BFA46A] text-black text-sm font-semibold rounded-lg hover:bg-[#d4b87a] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Analyze
+                    </button>
+                  </div>
+                  <p className="text-xs text-[#444] mt-2">GPT-4o reads the page and performs the teardown automatically.</p>
+                </div>
+              )}
+
+              {/* Text Input */}
+              {inputMode === 'text' && (
+                <div className="rounded-xl border border-white/10 bg-[#0f0f0f] p-6">
+                  <p className="text-sm text-[#666] mb-3">Describe the product — name, specs, what you know about it. The more detail, the sharper the analysis.</p>
+                  <textarea
+                    placeholder="e.g. Apple AirPods Pro 2 with USB-C, active noise cancellation, H2 chip..."
+                    value={textInput}
+                    onChange={e => setTextInput(e.target.value)}
+                    rows={4}
+                    className="w-full bg-[#1a1a1a] border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder:text-[#444] focus:outline-none focus:border-[#BFA46A]/40 resize-none"
+                  />
+                  <div className="flex justify-between items-center mt-3">
+                    <p className="text-xs text-[#444]">Works for any product, company, or technology system.</p>
+                    <button
+                      onClick={handleTextOrUrl}
+                      disabled={!textInput.trim()}
+                      className="px-5 py-2.5 bg-[#BFA46A] text-black text-sm font-semibold rounded-lg hover:bg-[#d4b87a] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Factorize →
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -627,3 +743,4 @@ export default function AnalyzePage() {
     </div>
   );
 }
+
