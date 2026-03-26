@@ -266,6 +266,7 @@ export default function RealityLensPage() {
   const handleAnalyze = useCallback(async () => {
     setAnalyzing(true);
     setResult(null);
+    setSonarIntel(null);
     
     const searchQuery = query.trim() || "Apple AirPods Pro 2";
     
@@ -276,36 +277,116 @@ export default function RealityLensPage() {
         body: JSON.stringify({ query: searchQuery }),
       });
 
-      if (!response.ok) {
-        throw new Error('Analysis failed');
-      }
+      if (!response.ok) throw new Error('Analysis failed — check your OpenAI key in Vercel env vars.');
 
       const data = await response.json();
       
       if (data.success && data.analysis) {
-        // Transform AI result to match display format
         const ai = data.analysis;
+        // Normalize nested structures safely
+        const identity = ai.identity || {};
+        const anatomy = ai.anatomy || {};
+        const process = ai.process || {};
+        const economics = ai.economics || {};
+        const ecosystem = ai.ecosystem || {};
+        const verdict = ai.verdict || {};
+
         const transformed = {
+          productName: identity.full_name || ai.subject || searchQuery,
           subject: ai.subject || searchQuery,
           type: ai.type || "Product",
-          identity: ai.identity || DEMO_DATA.identity,
-          anatomy: ai.anatomy || DEMO_DATA.anatomy,
-          process: ai.process || DEMO_DATA.process,
-          economics: ai.economics || DEMO_DATA.economics,
-          ecosystem: ai.ecosystem || DEMO_DATA.ecosystem,
-          verdict: ai.verdict || DEMO_DATA.verdict,
+          identity: {
+            company: identity.company || "Unknown",
+            category: identity.category || ai.type || "Product",
+            launchDate: identity.launch_date || "N/A",
+            priceRange: identity.price_range || "N/A",
+            positioning: identity.positioning || "",
+            targetCustomer: identity.target_customer || "",
+            brandPerception: identity.brand_perception_score || 7,
+          },
+          anatomy: {
+            techStack: (anatomy.key_components || []).map((c: any) => ({
+              name: c.name || c,
+              role: c.purpose || c.role || "",
+              cost: c.estimated_cost || "",
+            })),
+            bomEstimate: (anatomy.key_components || []).map((c: any, i: number) => ({
+              component: c.name || c,
+              cost: parseFloat(c.estimated_cost?.replace(/[^0-9.]/g, '') || String(5 + i * 3)),
+            })),
+            patents: anatomy.key_patents || [],
+            manufacturingComplexity: anatomy.manufacturing_complexity_score || 7,
+            totalBomEstimate: anatomy.total_bom_estimate || "N/A",
+          },
+          process: {
+            overview: process.manufacturing_overview || "",
+            supplyChain: (process.supply_chain || []).map((s: any) => ({
+              dependency: s.stage || s.dependency || s,
+              risk: s.risk || "Medium",
+            })),
+            qualityCheckpoints: process.quality_checkpoints || [],
+            timeToMarket: process.time_to_market || "N/A",
+          },
+          economics: {
+            unitEconomics: {
+              cogs: economics.unit_economics?.cogs || "N/A",
+              retail: economics.unit_economics?.retail_price || "N/A",
+              margin: economics.unit_economics?.gross_margin_pct || 0,
+              revenue: economics.unit_economics?.estimated_annual_revenue || "N/A",
+            },
+            revenueModel: economics.revenue_model || "",
+            market: {
+              tam: economics.tam || "N/A",
+              sam: economics.sam || "N/A",
+              som: economics.som || "N/A",
+            },
+            competitivePricing: (economics.competitive_pricing || []).map((p: any) => ({
+              product: p.competitor || p.product || p,
+              price: parseFloat(p.price?.replace?.(/[^0-9.]/g, '') || p.price || 0),
+              company: p.competitor || "",
+            })),
+          },
+          ecosystem: {
+            competitiveData: (ecosystem.competitive_dimensions ? [
+              { metric: "Price", ...Object.fromEntries(Object.entries(ecosystem.competitive_dimensions)) },
+            ] : DEMO_DATA.ecosystem.competitiveData),
+            partnerships: ecosystem.partnerships || [],
+            threats: ecosystem.threats || [],
+            growth: ecosystem.growth_vectors || [],
+          },
+          verdict: {
+            recommended: verdict.recommended || "STUDY",
+            confidence: verdict.confidence || 0.7,
+            rationale: verdict.rationale || "",
+            alternatives: verdict.alternatives || [],
+          },
           summary: ai.summary || "Analysis complete.",
         };
+
         setResult(transformed as any);
-        enrichWithSonar(ai.subject || searchQuery, transformed);
+
+        // Wire live_intel directly from response — no second fetch needed
+        if (data.live_intel) {
+          setSonarIntel({
+            content: '',
+            citations: [],
+            structured: data.live_intel,
+          } as any);
+          setSonarLoading(false);
+        } else {
+          // Fire secondary Sonar enrich if not in response
+          enrichWithSonar(transformed.subject, transformed);
+        }
       } else {
-        // Fallback to demo data
-        setResult(DEMO_DATA);
+        throw new Error(data.error || 'Analysis returned empty result');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Reality Lens error:', error);
-      // Fallback to demo data on error
-      setResult(DEMO_DATA);
+      toast?.({
+        title: "Analysis Failed",
+        description: error.message || "Something went wrong. Check your API keys in Vercel.",
+        variant: "destructive",
+      });
     }
     
     setAnalyzing(false);
@@ -820,43 +901,89 @@ export default function RealityLensPage() {
                 </div>
               </LayerSection>
 
-              {/* Perplexity Sonar Live Intel Panel */}
-              <div className="p-5 rounded-xl bg-[#0f0f0f] border border-[#0EA5E9]/20 mb-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-[#0EA5E9] animate-pulse" />
-                    <span className="text-xs font-semibold text-[#0EA5E9] tracking-wider uppercase">Perplexity Sonar · Live Intel</span>
-                  </div>
-                  {!sonarIntel && !sonarLoading && (
-                    <button onClick={() => enrichWithSonar(result.subject, result)}
-                      className="text-xs px-3 py-1 border border-[#0EA5E9]/30 text-[#0EA5E9] rounded hover:bg-[#0EA5E9]/5 transition-colors">
-                      Fetch Live Intel
-                    </button>
-                  )}
+              {/* ═══ Perplexity Sonar Live Intel Panel ═══ */}
+              <div className="rounded-xl bg-[#0a0f18] border border-[#0EA5E9]/25 overflow-hidden mb-4">
+                <div className="flex items-center gap-2 px-5 py-3 border-b border-[#0EA5E9]/10">
+                  <div className="w-2 h-2 rounded-full bg-[#0EA5E9] animate-pulse" />
+                  <span className="text-xs font-bold text-[#0EA5E9] tracking-widest uppercase">Perplexity Sonar · Live Market Intel</span>
+                  <span className="ml-auto text-xs text-[#334]">Real-time · {new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'})}</span>
                 </div>
+
                 {sonarLoading && (
-                  <div className="flex items-center gap-2 text-xs text-[#555]">
-                    <div className="w-3 h-3 border border-[#0EA5E9]/40 border-t-[#0EA5E9] rounded-full animate-spin" />
+                  <div className="flex items-center gap-3 px-5 py-4 text-xs text-[#445]">
+                    <div className="w-3.5 h-3.5 border border-[#0EA5E9]/30 border-t-[#0EA5E9] rounded-full animate-spin" />
                     Querying live market data via Perplexity Sonar...
                   </div>
                 )}
-                {sonarIntel && (
-                  <div>
-                    <p className="text-sm text-[#999] leading-relaxed whitespace-pre-wrap">{sonarIntel.content}</p>
-                    {sonarIntel.citations.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {sonarIntel.citations.slice(0, 4).map((cite, i) => (
-                          <a key={i} href={cite} target="_blank" rel="noopener noreferrer"
-                            className="text-xs px-2 py-0.5 bg-[#0EA5E9]/5 border border-[#0EA5E9]/20 text-[#0EA5E9] rounded hover:bg-[#0EA5E9]/10 transition-colors">
-                            [{i+1}] Source
-                          </a>
-                        ))}
+
+                {(sonarIntel as any)?.structured && (() => {
+                  const s = (sonarIntel as any).structured;
+                  return (
+                    <div className="p-5 space-y-4">
+                      {/* Market Signal */}
+                      {s.market_signal && (
+                        <div className="flex items-start gap-3 p-3 rounded-lg bg-[#0EA5E9]/5 border border-[#0EA5E9]/10">
+                          <Zap className="w-4 h-4 text-[#0EA5E9] mt-0.5 shrink-0" />
+                          <p className="text-sm text-[#ccd] leading-relaxed">{s.market_signal}</p>
+                        </div>
+                      )}
+
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        {/* Live Economics */}
+                        {s.live_economics && (
+                          <div>
+                            <h4 className="text-xs text-[#445] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                              <DollarSign className="w-3 h-3" /> Live Economics
+                            </h4>
+                            <p className="text-sm text-[#889] leading-relaxed">{s.live_economics}</p>
+                          </div>
+                        )}
+
+                        {/* Build Signal */}
+                        {s.build_or_avoid && (
+                          <div>
+                            <h4 className="text-xs text-[#445] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                              <Target className="w-3 h-3" /> Founder Signal
+                            </h4>
+                            <p className="text-sm text-[#889] leading-relaxed">{s.build_or_avoid}</p>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                )}
+
+                      {/* Competitors */}
+                      {s.competitors?.length > 0 && (
+                        <div>
+                          <h4 className="text-xs text-[#445] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                            <Users className="w-3 h-3" /> Live Competitor Intel
+                          </h4>
+                          <div className="space-y-2">
+                            {s.competitors.slice(0, 3).map((c: any, i: number) => (
+                              <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-[#0A0A0A] border border-white/[0.04]">
+                                <div className="w-6 h-6 rounded bg-[#0EA5E9]/10 flex items-center justify-center shrink-0">
+                                  <span className="text-xs font-bold text-[#0EA5E9]">{i+1}</span>
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-semibold text-white">{c.name}</p>
+                                  <p className="text-xs text-green-400 mt-0.5">✦ {c.moat}</p>
+                                  <p className="text-xs text-red-400 mt-0.5">▼ {c.weakness}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {!sonarIntel && !sonarLoading && (
-                  <p className="text-xs text-[#555]">Live pricing, news, and competitor intel via Perplexity Sonar.</p>
+                  <div className="px-5 py-4 flex items-center justify-between">
+                    <p className="text-xs text-[#334]">Live pricing, news, and competitor intel via Perplexity Sonar.</p>
+                    <button onClick={() => enrichWithSonar(result.subject, result)}
+                      className="text-xs px-3 py-1.5 border border-[#0EA5E9]/30 text-[#0EA5E9] rounded-lg hover:bg-[#0EA5E9]/5 transition-colors">
+                      Fetch Live Intel
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -925,5 +1052,6 @@ export default function RealityLensPage() {
     </div>
   );
 }
+
 
 
