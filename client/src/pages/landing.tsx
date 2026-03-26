@@ -1,8 +1,8 @@
 import { Link } from "wouter";
 import { 
-  Cpu, Layers, DollarSign, Shield, BarChart3, Box, 
-  Upload, Zap, FileText, ArrowRight, Check, ChevronRight,
-  Camera, Sparkles
+  Cpu, Layers, DollarSign, Shield, BarChart3, 
+  Upload, Zap, FileText, ArrowRight, Check,
+  Camera, Sparkles, Globe, Lock, TrendingUp, Search
 } from "lucide-react";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 import { useState, useEffect, useRef } from "react";
@@ -24,7 +24,23 @@ function FactorizerLogo({ className = "h-8" }: { className?: string }) {
   );
 }
 
-/* ──────────────────────── Hero Mockup SVG ──────────────────────── */
+/* ──────────────────────── Animated Section ──────────────────────── */
+function AnimatedSection({ children, className = "", delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const observer = new IntersectionObserver(([entry]) => { if (entry.isIntersecting) setVisible(true); }, { threshold: 0.1 });
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <div ref={ref} className={className} style={{ opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(20px)", transition: `opacity 0.6s ease ${delay}ms, transform 0.6s ease ${delay}ms` }}>
+      {children}
+    </div>
+  );
+}
+
+/* ──────────────────────── Hero Mockup ──────────────────────── */
 function HeroMockup() {
   return (
     <div className="relative w-full max-w-lg mx-auto">
@@ -58,240 +74,171 @@ function HeroMockup() {
         <text x="254" y="248" fill="#22c55e" fontSize="14" fontFamily="Inter, sans-serif" fontWeight="700">3/10 — Low</text>
         <rect x="20" y="280" width="440" height="4" rx="2" fill="#1a1a1a" />
         <rect x="20" y="280" width="380" height="4" rx="2" fill="#BFA46A" opacity="0.7" />
-        <text x="20" y="304" fill="#666" fontSize="8" fontFamily="Inter, sans-serif">Analyzing 847M neural patterns...</text>
-        <text x="408" y="304" fill="#BFA46A" fontSize="8" fontFamily="Inter, sans-serif" fontWeight="600">86%</text>
       </svg>
-      <div className="absolute -inset-4 bg-gradient-to-r from-[#BFA46A]/5 via-transparent to-[#0EA5E9]/5 rounded-2xl blur-xl -z-10" />
     </div>
   );
 }
 
-/* ──────────────────────── Animated Section ──────────────────────── */
-function AnimatedSection({ children, className = "", delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [isVisible, setIsVisible] = useState(false);
+const USE_CASES = [
+  {
+    icon: Cpu,
+    accent: "#BFA46A",
+    title: "Hardware Founders",
+    description: "Reverse-engineer competitor products. Know their BOM cost before you price yours. Find the IP gaps they left open.",
+  },
+  {
+    icon: Shield,
+    accent: "#0EA5E9",
+    title: "VC Due Diligence",
+    description: "Validate hardware startup claims in minutes. BOM cross-check, IP risk scan, manufacturing feasibility — before the term sheet.",
+  },
+  {
+    icon: TrendingUp,
+    accent: "#6366F1",
+    title: "Defense & Gov Procurement",
+    description: "Rapid component-level assessment of supplier hardware. ITAR-relevant IP flags, supply chain risk, and cost benchmarking.",
+  },
+  {
+    icon: Search,
+    accent: "#22c55e",
+    title: "Competitive Intelligence",
+    description: "Track what competitors are shipping. Understand their cost structure, moat depth, and where you can undercut or outmaneuver.",
+  },
+  {
+    icon: FileText,
+    accent: "#f59e0b",
+    title: "Patent Strategy",
+    description: "IP vulnerability maps from real product scans. Design-around suggestions, freedom-to-operate signals, and claim conflict alerts.",
+  },
+  {
+    icon: BarChart3,
+    accent: "#ec4899",
+    title: "M&A Tech Assessment",
+    description: "Hardware asset valuation support. Understand true manufacturing costs, hidden IP liabilities, and replication difficulty.",
+  },
+];
 
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsVisible(true);
-          observer.unobserve(el);
-        }
-      },
-      { threshold: 0.05, rootMargin: "0px 0px -20px 0px" }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
+const HOW_IT_WORKS = [
+  { step: "01", title: "Upload or Query", desc: "Drop a product photo into Factorizer, or type any product/company name into Reality Lens." },
+  { step: "02", title: "AI X-Ray", desc: "GPT-4o Vision identifies components, materials, suppliers. Perplexity Sonar enriches with live market data." },
+  { step: "03", title: "PINK Score", desc: "Every analysis generates a PINK failure probability score — the probability this product is a market failure." },
+  { step: "04", title: "Export Intel", desc: "Download your full report: BOM, IP risk map, competitive radar, and strategic verdict." },
+];
 
-  return (
-    <div
-      ref={ref}
-      className={className}
-      style={{
-        opacity: isVisible ? 1 : 0,
-        transform: isVisible ? 'translateY(0)' : 'translateY(24px)',
-        transition: `opacity 0.6s ease-out ${delay}ms, transform 0.6s ease-out ${delay}ms`
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-/* ──────────────────────── Landing Page ──────────────────────── */
-export default function LandingPage() {
+export default function Landing() {
+  const [email, setEmail] = useState("");
   const { toast } = useToast();
 
-  const [showCheckout, setShowCheckout] = useState<'SINGLE_REPORT' | 'PRO_MONTHLY' | null>(null);
-
   return (
-    <div className="min-h-screen bg-[#0A0A0A] text-[#E8E2D4] overflow-x-hidden">
-      
-      {/* ═══ Navigation ═══ */}
-      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-[#0A0A0A]/80 backdrop-blur-xl">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <FactorizerLogo className="h-7" />
+    <div className="min-h-screen bg-[#0A0A0A] text-white font-sans antialiased">
+      <style>{`
+        .text-gold-gradient { background: linear-gradient(135deg, #BFA46A, #D4BE8A); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .glow-gold { box-shadow: 0 0 40px rgba(191,164,106,0.08); }
+        .glow-blue { box-shadow: 0 0 40px rgba(14,165,233,0.08); }
+      `}</style>
+
+      {/* ═══ Nav ═══ */}
+      <nav className="sticky top-0 z-50 px-6 py-4 border-b border-white/5 bg-[#0A0A0A]/80 backdrop-blur-xl">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <FactorizerLogo />
           <div className="hidden md:flex items-center gap-8">
-            <button 
-              onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
-              className="text-sm text-[#888] hover:text-[#BFA46A] transition-colors"
-              data-testid="nav-how-it-works"
-            >
-              How It Works
-            </button>
-            <button 
-              onClick={() => document.getElementById('capabilities')?.scrollIntoView({ behavior: 'smooth' })}
-              className="text-sm text-[#888] hover:text-[#BFA46A] transition-colors"
-              data-testid="nav-capabilities"
-            >
-              Capabilities
-            </button>
-            <button 
-              onClick={() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' })}
-              className="text-sm text-[#888] hover:text-[#BFA46A] transition-colors"
-              data-testid="nav-pricing"
-            >
-              Pricing
-            </button>
+            {["How It Works", "Use Cases", "Pricing"].map((item) => (
+              <a key={item} href={`#${item.toLowerCase().replace(/ /g, "-")}`} className="text-sm text-[#666] hover:text-white transition-colors">{item}</a>
+            ))}
           </div>
-          <Link href="/analyze">
-            <span className="px-4 py-2 text-sm font-medium bg-[#BFA46A] text-[#0A0A0A] rounded-lg hover:bg-[#D4BE8A] transition-colors cursor-pointer" data-testid="nav-cta">
-              Open App
-            </span>
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link href="/reality-lens">
+              <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#0EA5E9] border border-[#0EA5E9]/20 rounded-lg hover:bg-[#0EA5E9]/5 transition-colors cursor-pointer">
+                <Globe className="w-3 h-3" /> Reality Lens
+              </span>
+            </Link>
+            <Link href="/analyze">
+              <span className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#BFA46A] text-[#0A0A0A] text-sm font-semibold rounded-lg hover:bg-[#D4BE8A] transition-colors cursor-pointer">
+                <Camera className="w-3.5 h-3.5" /> Try Free
+              </span>
+            </Link>
+          </div>
         </div>
       </nav>
 
-      {/* ═══ Hero Section ═══ */}
-      <section className="pt-32 pb-24 px-6">
+      {/* ═══ Hero ═══ */}
+      <section className="pt-24 pb-16 px-6">
         <div className="max-w-6xl mx-auto">
+          {/* Badges */}
+          <div className="flex flex-wrap justify-center gap-2 mb-8">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#76B900]/10 border border-[#76B900]/20 rounded-full text-xs text-[#76B900] font-medium">
+              ⚡ NVIDIA Inception Member
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#BFA46A]/10 border border-[#BFA46A]/20 rounded-full text-xs text-[#BFA46A] font-medium">
+              🔬 QTAC₇ Rated · 9.51
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/5 border border-white/10 rounded-full text-xs text-[#999] font-medium">
+              🏛️ 19 Patents Pending
+            </span>
+          </div>
+
           <div className="grid lg:grid-cols-2 gap-16 items-center">
             <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[#BFA46A]/20 bg-[#BFA46A]/5 mb-8">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#BFA46A] animate-pulse" />
-                <span className="text-xs text-[#BFA46A] font-medium tracking-wide uppercase">AI-Powered Product Intelligence</span>
-              </div>
-              
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-[1.1] tracking-tight mb-6">
-                Upload a photo.{" "}
-                <span className="text-gold-gradient">Get the blueprint.</span>
+                X-ray any product<br />
+                <span className="text-gold-gradient">in 60 seconds.</span>
               </h1>
-              
-              <p className="text-lg text-[#888] leading-relaxed mb-10 max-w-xl">
-                Two intelligence engines. One platform. Upload a photo, factorize any product — from components to competitive strategy.
+              <p className="text-lg text-[#777] leading-relaxed mb-8 max-w-lg">
+                AI-powered reverse engineering. Drop a photo → get full BOM, manufacturing costs, IP risk map, and competitive landscape. Institutional-grade intel in under a minute.
               </p>
-              
-              <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex flex-col sm:flex-row gap-3 mb-8">
                 <Link href="/analyze">
-                  <span className="inline-flex items-center gap-2 px-6 py-3.5 bg-[#BFA46A] text-[#0A0A0A] font-semibold rounded-lg hover:bg-[#D4BE8A] transition-all cursor-pointer group" data-testid="hero-cta">
-                    Analyze Your First Product — Free
+                  <span className="inline-flex items-center gap-2 px-6 py-3.5 bg-[#BFA46A] text-[#0A0A0A] font-semibold rounded-lg hover:bg-[#D4BE8A] transition-all cursor-pointer group" data-testid="hero-cta-primary">
+                    <Camera className="w-4 h-4" />
+                    Factorizer — Upload Photo
                     <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                   </span>
                 </Link>
-                <button 
-                  onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
-                  className="inline-flex items-center gap-2 px-6 py-3.5 border border-white/10 text-[#ccc] rounded-lg hover:border-[#BFA46A]/30 hover:text-[#BFA46A] transition-all"
-                  data-testid="hero-learn-more"
-                >
-                  See How It Works
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+                <Link href="/reality-lens">
+                  <span className="inline-flex items-center gap-2 px-6 py-3.5 border border-[#0EA5E9]/30 text-[#0EA5E9] font-semibold rounded-lg hover:bg-[#0EA5E9]/5 transition-all cursor-pointer group" data-testid="hero-cta-secondary">
+                    <Sparkles className="w-4 h-4" />
+                    Reality Lens — Type a Name
+                  </span>
+                </Link>
               </div>
+              <p className="text-xs text-[#555]">Free tier included. No credit card required.</p>
             </div>
-            
-            <div className="hidden lg:block">
-              <HeroMockup />
-            </div>
+            <HeroMockup />
           </div>
         </div>
       </section>
 
-      {/* ═══ Two Product Cards ═══ */}
-      <section className="py-20 px-6 border-t border-white/5">
-        <div className="max-w-6xl mx-auto">
-          <AnimatedSection className="text-center mb-14">
-            <p className="text-xs font-semibold tracking-[0.2em] uppercase text-[#BFA46A] mb-3">Two Engines</p>
-            <h2 className="text-3xl md:text-4xl font-bold">One platform. Two ways to decode.</h2>
-          </AnimatedSection>
-
-          <div className="grid md:grid-cols-2 gap-6 max-w-5xl mx-auto">
-            {/* Card 1: Factorizer */}
-            <AnimatedSection delay={0}>
-              <div className="group relative p-8 rounded-2xl bg-[#111]/60 border border-white/5 hover:border-[#BFA46A]/20 transition-all duration-500 h-full flex flex-col">
-                <div className="w-14 h-14 rounded-xl bg-[#BFA46A]/10 flex items-center justify-center mb-6 group-hover:bg-[#BFA46A]/15 transition-colors">
-                  <Camera className="w-7 h-7 text-[#BFA46A]" />
-                </div>
-                <div className="inline-flex items-center gap-2 mb-3">
-                  <h3 className="text-xl font-bold">Factorizer Engine</h3>
-                </div>
-                <p className="text-sm font-semibold text-[#BFA46A] mb-3">Photo → Blueprint</p>
-                <p className="text-sm text-[#777] leading-relaxed flex-1 mb-8">
-                  Upload a photo of any product. Get component identification, BOM estimation, manufacturing costs at scale, IP vulnerability scan, and competitive positioning.
-                </p>
-                <Link href="/analyze">
-                  <span className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium bg-[#BFA46A] text-[#0A0A0A] rounded-lg hover:bg-[#D4BE8A] transition-colors cursor-pointer group/btn" data-testid="card-factorizer-cta">
-                    Try Factorizer
-                    <ArrowRight className="w-4 h-4 group-hover/btn:translate-x-0.5 transition-transform" />
-                  </span>
-                </Link>
-              </div>
+      {/* ═══ Stats ═══ */}
+      <section className="py-12 px-6 border-y border-white/5 bg-white/[0.01]">
+        <div className="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+          {[
+            { value: "60s", label: "Avg. analysis time" },
+            { value: "94%", label: "Component ID accuracy" },
+            { value: "1/100th", label: "vs. manual assessment cost" },
+            { value: "19", label: "Foundational patents filed" },
+          ].map((s, i) => (
+            <AnimatedSection key={i} delay={i * 80}>
+              <div className="text-2xl md:text-3xl font-bold text-gold-gradient mb-1">{s.value}</div>
+              <div className="text-xs text-[#555]">{s.label}</div>
             </AnimatedSection>
-
-            {/* Card 2: Reality Lens */}
-            <AnimatedSection delay={150}>
-              <div className="group relative p-8 rounded-2xl bg-[#111]/60 border border-white/5 hover:border-[#0EA5E9]/20 transition-all duration-500 h-full flex flex-col">
-                <div className="w-14 h-14 rounded-xl bg-[#0EA5E9]/10 flex items-center justify-center mb-6 group-hover:bg-[#0EA5E9]/15 transition-colors">
-                  <Layers className="w-7 h-7 text-[#0EA5E9]" />
-                </div>
-                <div className="inline-flex items-center gap-2 mb-3">
-                  <h3 className="text-xl font-bold">Reality Lens</h3>
-                  <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#0EA5E9]/10 text-[#0EA5E9] rounded-full">New</span>
-                </div>
-                <p className="text-sm font-semibold text-[#0EA5E9] mb-3">Product → Strategy</p>
-                <p className="text-sm text-[#777] leading-relaxed flex-1 mb-8">
-                  Enter any product, company, or technology. Get a 5-layer strategic deep dive: Identity, Anatomy, Process, Economics, and Ecosystem — with Build/Acquire/Partner verdicts.
-                </p>
-                <Link href="/reality-lens">
-                  <span className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium bg-[#0EA5E9] text-[#0A0A0A] rounded-lg hover:bg-[#38BDF8] transition-colors cursor-pointer group/btn" data-testid="card-reality-lens-cta">
-                    Try Reality Lens
-                    <ArrowRight className="w-4 h-4 group-hover/btn:translate-x-0.5 transition-transform" />
-                  </span>
-                </Link>
-              </div>
-            </AnimatedSection>
-          </div>
+          ))}
         </div>
       </section>
 
       {/* ═══ How It Works ═══ */}
-      <section id="how-it-works" className="py-24 px-6 border-t border-white/5">
+      <section id="how-it-works" className="py-24 px-6">
         <div className="max-w-6xl mx-auto">
           <AnimatedSection className="text-center mb-16">
-            <p className="text-xs font-semibold tracking-[0.2em] uppercase text-[#BFA46A] mb-3">Process</p>
-            <h2 className="text-3xl md:text-4xl font-bold">Three steps. Full intelligence.</h2>
+            <p className="text-xs font-semibold tracking-[0.2em] uppercase text-[#BFA46A] mb-3">How It Works</p>
+            <h2 className="text-3xl md:text-4xl font-bold">From photo to intelligence in 4 steps.</h2>
           </AnimatedSection>
-          
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              {
-                icon: Upload,
-                step: "01",
-                title: "Upload or Enter",
-                description: "Drop a photo for Factorizer, or type a product name for Reality Lens. Two paths to the same deep intelligence.",
-                color: "#BFA46A"
-              },
-              {
-                icon: Zap,
-                step: "02",
-                title: "Analyze",
-                description: "AI identifies components, materials, costs, IP risks, and runs 5-layer strategic factorization in seconds.",
-                color: "#0EA5E9"
-              },
-              {
-                icon: FileText,
-                step: "03",
-                title: "Report",
-                description: "Get a full intelligence brief: BOM, cost estimates, IP risks, competitive positioning, and strategic verdicts.",
-                color: "#BFA46A"
-              }
-            ].map((item, i) => (
-              <AnimatedSection key={i} delay={i * 150}>
-                <div className="relative group p-8 rounded-xl bg-[#111]/60 border border-white/5 hover:border-white/10 transition-all duration-500 h-full">
-                  <div className="flex items-center gap-4 mb-5">
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${item.color}15` }}>
-                      <item.icon className="w-5 h-5" style={{ color: item.color }} />
-                    </div>
-                    <span className="text-xs font-mono text-[#555]">{item.step}</span>
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2">{item.title}</h3>
-                  <p className="text-sm text-[#777] leading-relaxed">{item.description}</p>
-                  {i < 2 && (
-                    <div className="hidden md:block absolute top-1/2 -right-4 w-8 h-px bg-gradient-to-r from-white/10 to-transparent" />
-                  )}
+          <div className="grid md:grid-cols-4 gap-6">
+            {HOW_IT_WORKS.map((step, i) => (
+              <AnimatedSection key={i} delay={i * 100}>
+                <div className="p-6 rounded-xl bg-[#111]/40 border border-white/5 h-full">
+                  <div className="text-3xl font-bold text-[#222] mb-3">{step.step}</div>
+                  <h3 className="text-sm font-semibold mb-2">{step.title}</h3>
+                  <p className="text-xs text-[#666] leading-relaxed">{step.desc}</p>
                 </div>
               </AnimatedSection>
             ))}
@@ -299,53 +246,16 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ═══ What You Get — Capabilities ═══ */}
-      <section id="capabilities" className="py-24 px-6 border-t border-white/5">
+      {/* ═══ Use Cases ═══ */}
+      <section id="use-cases" className="py-24 px-6 border-t border-white/5">
         <div className="max-w-6xl mx-auto">
           <AnimatedSection className="text-center mb-16">
-            <p className="text-xs font-semibold tracking-[0.2em] uppercase text-[#0EA5E9] mb-3">Capabilities</p>
-            <h2 className="text-3xl md:text-4xl font-bold">Everything you need to decode hardware.</h2>
+            <p className="text-xs font-semibold tracking-[0.2em] uppercase text-[#BFA46A] mb-3">Use Cases</p>
+            <h2 className="text-3xl md:text-4xl font-bold">Built for the people who build things.</h2>
+            <p className="text-[#666] mt-3 max-w-xl mx-auto">Hardware founders, VC analysts, defense procurement, IP attorneys — anyone who needs to know what's inside a product and what it actually costs.</p>
           </AnimatedSection>
-          
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[
-              {
-                icon: Cpu,
-                title: "Component Identification",
-                description: "Resistors, ICs, motors, sensors, connectors — identified and cataloged with confidence scores.",
-                accent: "#BFA46A"
-              },
-              {
-                icon: Layers,
-                title: "5-Layer Strategic Analysis",
-                description: "Identity, Anatomy, Process, Economics, Ecosystem — Reality Lens breaks down any product into actionable intelligence.",
-                accent: "#0EA5E9"
-              },
-              {
-                icon: DollarSign,
-                title: "Manufacturing Cost Estimation",
-                description: "Full BOM + labor + tooling costs at 1, 100, 1K, and 10K unit volumes.",
-                accent: "#BFA46A"
-              },
-              {
-                icon: Shield,
-                title: "IP Vulnerability Scan",
-                description: "Patent search and design-around recommendations. Know your risk before you ship.",
-                accent: "#0EA5E9"
-              },
-              {
-                icon: BarChart3,
-                title: "Competitive Intelligence",
-                description: "Feature comparison, differentiation gaps, and market positioning across verified competitors.",
-                accent: "#BFA46A"
-              },
-              {
-                icon: Box,
-                title: "3D Blueprint Export",
-                description: "CAD files, technical drawings, and assembly views. From photo to prototype in minutes.",
-                accent: "#0EA5E9"
-              }
-            ].map((item, i) => (
+          <div className="grid md:grid-cols-3 gap-5">
+            {USE_CASES.map((item, i) => (
               <AnimatedSection key={i} delay={i * 80}>
                 <div className="group p-6 rounded-xl bg-[#111]/40 border border-white/5 hover:border-white/10 transition-all duration-300 h-full">
                   <div className="w-10 h-10 rounded-lg flex items-center justify-center mb-4" style={{ backgroundColor: `${item.accent}10` }}>
@@ -360,6 +270,57 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ═══ Dual Engine Callout ═══ */}
+      <section className="py-24 px-6 border-t border-white/5">
+        <div className="max-w-5xl mx-auto grid md:grid-cols-2 gap-6">
+          <AnimatedSection>
+            <div className="p-8 rounded-2xl bg-[#111]/60 border border-[#BFA46A]/20 glow-gold h-full">
+              <div className="w-12 h-12 rounded-xl bg-[#BFA46A]/10 flex items-center justify-center mb-5">
+                <Camera className="w-6 h-6 text-[#BFA46A]" />
+              </div>
+              <h3 className="text-xl font-bold text-[#BFA46A] mb-2">Factorizer Engine</h3>
+              <p className="text-sm text-[#777] mb-5 leading-relaxed">Upload any product photo. GPT-4o Vision identifies every component, estimates BOM costs at 4 production scales, maps IP risk, and benchmarks against competitors.</p>
+              <ul className="space-y-2 mb-6">
+                {["Component-level ID (ICs, sensors, MCUs)", "BOM cost at 1 / 100 / 1K / 10K units", "IP risk score + design-around suggestions", "PINK failure probability score"].map((f,i) => (
+                  <li key={i} className="flex items-center gap-2 text-xs text-[#999]">
+                    <Check className="w-3.5 h-3.5 text-[#BFA46A] shrink-0" />{f}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/analyze">
+                <span className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#BFA46A] text-[#0A0A0A] text-sm font-semibold rounded-lg hover:bg-[#D4BE8A] transition-colors cursor-pointer">
+                  Try Factorizer <ArrowRight className="w-4 h-4" />
+                </span>
+              </Link>
+            </div>
+          </AnimatedSection>
+          <AnimatedSection delay={100}>
+            <div className="p-8 rounded-2xl bg-[#111]/60 border border-[#0EA5E9]/20 glow-blue h-full">
+              <div className="w-12 h-12 rounded-xl bg-[#0EA5E9]/10 flex items-center justify-center mb-5">
+                <Globe className="w-6 h-6 text-[#0EA5E9]" />
+              </div>
+              <h3 className="text-xl font-bold text-[#0EA5E9] mb-2">Reality Lens</h3>
+              <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#0EA5E9]/10 rounded text-xs text-[#0EA5E9] mb-4">
+                <Zap className="w-3 h-3" /> Perplexity Sonar · Live Market Intel
+              </div>
+              <p className="text-sm text-[#777] mb-5 leading-relaxed">Type any product, company, or technology. Get a full 5-layer strategic factorization: Identity, Anatomy, Process, Economics, Ecosystem — with a BUILD/ACQUIRE/PARTNER/REMIX verdict.</p>
+              <ul className="space-y-2 mb-6">
+                {["5-layer strategic framework", "Live market data via Perplexity Sonar", "TAM/SAM/SOM estimates", "Strategic verdict with confidence score"].map((f,i) => (
+                  <li key={i} className="flex items-center gap-2 text-xs text-[#999]">
+                    <Check className="w-3.5 h-3.5 text-[#0EA5E9] shrink-0" />{f}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/reality-lens">
+                <span className="inline-flex items-center gap-2 px-5 py-2.5 border border-[#0EA5E9]/30 text-[#0EA5E9] text-sm font-semibold rounded-lg hover:bg-[#0EA5E9]/5 transition-colors cursor-pointer">
+                  Try Reality Lens <ArrowRight className="w-4 h-4" />
+                </span>
+              </Link>
+            </div>
+          </AnimatedSection>
+        </div>
+      </section>
+
       {/* ═══ Pricing ═══ */}
       <section id="pricing" className="py-24 px-6 border-t border-white/5">
         <div className="max-w-6xl mx-auto">
@@ -369,50 +330,48 @@ export default function LandingPage() {
             <p className="text-[#666] mt-3">Start free. Scale when you're ready.</p>
           </AnimatedSection>
           
-          <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+          <div className="grid md:grid-cols-4 gap-5 max-w-5xl mx-auto">
             {/* Free */}
             <AnimatedSection delay={0}>
               <div className="p-6 rounded-xl bg-[#111]/60 border border-white/5 flex flex-col h-full">
-                <div className="mb-6">
-                  <h3 className="text-base font-semibold mb-1">Free</h3>
+                <div className="mb-5">
+                  <h3 className="text-sm font-semibold mb-1">Free</h3>
                   <p className="text-xs text-[#666]">Try both engines</p>
                 </div>
-                <div className="mb-6">
-                  <span className="text-3xl font-bold">$0</span>
-                  <span className="text-sm text-[#666] ml-1">/forever</span>
+                <div className="mb-5">
+                  <span className="text-2xl font-bold">$0</span>
+                  <span className="text-xs text-[#666] ml-1">/forever</span>
                 </div>
-                <ul className="space-y-3 mb-8 flex-1">
-                  {["1 Factorizer report", "1 Reality Lens analysis", "Basic component ID", "No credit card required"].map((f, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-[#999]">
-                      <Check className="w-4 h-4 text-[#555] mt-0.5 shrink-0" />
-                      {f}
+                <ul className="space-y-2 mb-6 flex-1">
+                  {["1 Factorizer report", "1 Reality Lens analysis", "Basic component ID", "No credit card"].map((f, i) => (
+                    <li key={i} className="flex items-start gap-2 text-xs text-[#999]">
+                      <Check className="w-3.5 h-3.5 text-[#555] mt-0.5 shrink-0" />{f}
                     </li>
                   ))}
                 </ul>
                 <Link href="/analyze">
-                  <span className="block w-full text-center px-4 py-2.5 text-sm font-medium border border-white/10 rounded-lg hover:border-white/20 transition-colors cursor-pointer" data-testid="pricing-free">
+                  <span className="block w-full text-center px-4 py-2 text-xs font-medium border border-white/10 rounded-lg hover:border-white/20 transition-colors cursor-pointer">
                     Get Started
                   </span>
                 </Link>
               </div>
             </AnimatedSection>
 
-            {/* Pay-As-You-Go */}
-            <AnimatedSection delay={100}>
+            {/* PAYG */}
+            <AnimatedSection delay={80}>
               <div className="p-6 rounded-xl bg-[#111]/60 border border-white/5 flex flex-col h-full">
-                <div className="mb-6">
-                  <h3 className="text-base font-semibold mb-1">Pay-As-You-Go</h3>
-                  <p className="text-xs text-[#666]">Buy credits as needed</p>
+                <div className="mb-5">
+                  <h3 className="text-sm font-semibold mb-1">Pay-As-You-Go</h3>
+                  <p className="text-xs text-[#666]">Credits when you need them</p>
                 </div>
-                <div className="mb-6">
-                  <span className="text-3xl font-bold">$29</span>
-                  <span className="text-sm text-[#666] ml-1">/report</span>
+                <div className="mb-5">
+                  <span className="text-2xl font-bold">$29</span>
+                  <span className="text-xs text-[#666] ml-1">/report</span>
                 </div>
-                <ul className="space-y-3 mb-8 flex-1">
-                  {["Either mode — Factorizer or Reality Lens", "Full component analysis", "5-layer strategic reports", "Manufacturing cost estimates", "IP vulnerability scan"].map((f, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-[#999]">
-                      <Check className="w-4 h-4 text-[#555] mt-0.5 shrink-0" />
-                      {f}
+                <ul className="space-y-2 mb-6 flex-1">
+                  {["Both engines", "Full component analysis", "5-layer strategic report", "Manufacturing cost table", "IP vulnerability scan"].map((f, i) => (
+                    <li key={i} className="flex items-start gap-2 text-xs text-[#999]">
+                      <Check className="w-3.5 h-3.5 text-[#555] mt-0.5 shrink-0" />{f}
                     </li>
                   ))}
                 </ul>
@@ -421,62 +380,55 @@ export default function LandingPage() {
             </AnimatedSection>
 
             {/* Pro — Recommended */}
-            <AnimatedSection delay={200}>
+            <AnimatedSection delay={160}>
               <div className="relative p-6 rounded-xl bg-[#111]/80 border border-[#BFA46A]/30 flex flex-col h-full glow-gold">
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-[#BFA46A] text-[#0A0A0A] text-xs font-semibold rounded-full">
-                  Recommended
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-[#BFA46A] text-[#0A0A0A] text-xs font-semibold rounded-full whitespace-nowrap">
+                  Most Popular
                 </div>
-                <div className="mb-6">
-                  <h3 className="text-base font-semibold text-[#BFA46A] mb-1">Pro</h3>
+                <div className="mb-5">
+                  <h3 className="text-sm font-semibold text-[#BFA46A] mb-1">Pro</h3>
                   <p className="text-xs text-[#666]">For hardware teams</p>
                 </div>
-                <div className="mb-6">
-                  <span className="text-3xl font-bold text-[#BFA46A]">$99</span>
-                  <span className="text-sm text-[#666] ml-1">/month</span>
+                <div className="mb-5">
+                  <span className="text-2xl font-bold text-[#BFA46A]">$99</span>
+                  <span className="text-xs text-[#666] ml-1">/month</span>
                 </div>
-                <ul className="space-y-3 mb-8 flex-1">
-                  {["10 reports/month — both modes", "Priority processing", "Export to CAD", "API access", "IP vulnerability scan", "Competitive intel"].map((f, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-[#ccc]">
-                      <Check className="w-4 h-4 text-[#BFA46A] mt-0.5 shrink-0" />
-                      {f}
+                <ul className="space-y-2 mb-6 flex-1">
+                  {["10 reports/month", "Priority processing", "API access", "Export to CSV/JSON", "IP vulnerability scan", "Competitive intel radar"].map((f, i) => (
+                    <li key={i} className="flex items-start gap-2 text-xs text-[#ccc]">
+                      <Check className="w-3.5 h-3.5 text-[#BFA46A] mt-0.5 shrink-0" />{f}
                     </li>
                   ))}
                 </ul>
                 <StripeBuyButton buttonId="PRO_MONTHLY" />
               </div>
             </AnimatedSection>
-          </div>
-        </div>
-      </section>
 
-      {/* ═══ Social Proof ═══ */}
-      <section className="py-24 px-6 border-t border-white/5">
-        <div className="max-w-6xl mx-auto">
-          <AnimatedSection className="text-center mb-12">
-            <p className="text-xs tracking-[0.15em] uppercase text-[#555] mb-8">Used by hardware teams at</p>
-            <div className="flex flex-wrap justify-center gap-8 items-center">
-              {["ACME Robotics", "NovaTech", "Helix Bio", "Aperture Labs", "Quantum Dynamics"].map((name, i) => (
-                <div 
-                  key={i} 
-                  className="px-6 py-3 rounded-lg bg-white/[0.02] border border-white/5 text-[#444] text-sm font-medium tracking-wide"
-                >
-                  {name}
+            {/* Enterprise */}
+            <AnimatedSection delay={240}>
+              <div className="p-6 rounded-xl bg-[#111]/60 border border-[#6366F1]/20 flex flex-col h-full">
+                <div className="mb-5">
+                  <h3 className="text-sm font-semibold text-[#6366F1] mb-1">Enterprise</h3>
+                  <p className="text-xs text-[#666]">VC / Defense / Legal</p>
                 </div>
-              ))}
-            </div>
-          </AnimatedSection>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-16">
-            {[
-              { value: "2,400+", label: "Products Analyzed" },
-              { value: "847M", label: "Neural Patterns Processed" },
-              { value: "91.7%", label: "Accuracy Rate" }
-            ].map((stat, i) => (
-              <AnimatedSection key={i} delay={i * 100} className="text-center">
-                <div className="text-3xl md:text-4xl font-bold text-gold-gradient mb-2">{stat.value}</div>
-                <div className="text-sm text-[#666]">{stat.label}</div>
-              </AnimatedSection>
-            ))}
+                <div className="mb-5">
+                  <span className="text-2xl font-bold">Custom</span>
+                  <span className="text-xs text-[#666] ml-1">/contract</span>
+                </div>
+                <ul className="space-y-2 mb-6 flex-1">
+                  {["Unlimited reports", "White-label reports", "Custom PINK thresholds", "ITAR-aware IP flags", "Dedicated support", "SOC 2 on roadmap"].map((f, i) => (
+                    <li key={i} className="flex items-start gap-2 text-xs text-[#999]">
+                      <Check className="w-3.5 h-3.5 text-[#6366F1] mt-0.5 shrink-0" />{f}
+                    </li>
+                  ))}
+                </ul>
+                <a href="mailto:bhines@waveform-tech.us?subject=Factorizer Enterprise">
+                  <span className="block w-full text-center px-4 py-2 text-xs font-medium border border-[#6366F1]/30 text-[#6366F1] rounded-lg hover:bg-[#6366F1]/5 transition-colors cursor-pointer">
+                    Contact Us
+                  </span>
+                </a>
+              </div>
+            </AnimatedSection>
           </div>
         </div>
       </section>
@@ -488,23 +440,23 @@ export default function LandingPage() {
             <h2 className="text-3xl md:text-4xl font-bold mb-4">
               Ready to decode your next product?
             </h2>
-            <p className="text-[#777] mb-8">
-              Join 2,400+ hardware teams already using Factorizer to accelerate product development.
+            <p className="text-[#777] mb-8 max-w-xl mx-auto">
+              Hardware founders, VC analysts, and defense teams use Factorizer to get institutional-grade product intelligence in under 60 seconds.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link href="/analyze">
-                <span className="inline-flex items-center gap-2 px-8 py-4 bg-[#BFA46A] text-[#0A0A0A] font-semibold rounded-lg hover:bg-[#D4BE8A] transition-all cursor-pointer text-lg group" data-testid="cta-final">
+                <span className="inline-flex items-center gap-2 px-8 py-4 bg-[#BFA46A] text-[#0A0A0A] font-semibold rounded-lg hover:bg-[#D4BE8A] transition-all cursor-pointer text-base group" data-testid="cta-final">
                   Try Factorizer — Free
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
                 </span>
               </Link>
-              <Link href="/reality-lens">
-                <span className="inline-flex items-center gap-2 px-8 py-4 border border-[#0EA5E9]/30 text-[#0EA5E9] font-semibold rounded-lg hover:bg-[#0EA5E9]/5 transition-all cursor-pointer text-lg group" data-testid="cta-reality-lens">
-                  Try Reality Lens
-                  <ArrowRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
+              <a href="mailto:bhines@waveform-tech.us?subject=Factorizer Enterprise Inquiry">
+                <span className="inline-flex items-center gap-2 px-8 py-4 border border-[#6366F1]/30 text-[#6366F1] font-semibold rounded-lg hover:bg-[#6366F1]/5 transition-all cursor-pointer text-base">
+                  <Lock className="w-4 h-4" /> Enterprise Access
                 </span>
-              </Link>
+              </a>
             </div>
+            <p className="text-xs text-[#444] mt-6">Built by Waveform Tech · bhines@waveform-tech.us · NVIDIA Inception · 19 Patents Pending</p>
           </AnimatedSection>
         </div>
       </section>
@@ -516,34 +468,36 @@ export default function LandingPage() {
             <div className="md:col-span-2">
               <FactorizerLogo className="h-6 mb-4" />
               <p className="text-sm text-[#555] max-w-sm leading-relaxed">
-                AI-powered product intelligence — reverse-engineer any hardware in seconds. Built by Waveform Tech.
+                AI-powered product intelligence. X-ray any hardware in 60 seconds. Built by Waveform Tech / CortexChain, Inc.
               </p>
+              <div className="flex gap-4 mt-4">
+                <a href="https://github.com/bhineswaveformer6" target="_blank" rel="noopener noreferrer" className="text-[#555] hover:text-[#BFA46A] transition-colors text-xs">GitHub</a>
+                <a href="https://www.linkedin.com/in/brandon-hines6" target="_blank" rel="noopener noreferrer" className="text-[#555] hover:text-[#BFA46A] transition-colors text-xs">LinkedIn</a>
+                <a href="mailto:bhines@waveform-tech.us" className="text-[#555] hover:text-[#BFA46A] transition-colors text-xs">Contact</a>
+              </div>
             </div>
             <div>
               <h4 className="text-xs font-semibold tracking-[0.15em] uppercase text-[#555] mb-4">Product</h4>
               <ul className="space-y-2">
-                {["Factorizer", "Reality Lens", "Pricing", "API Docs"].map((item, i) => (
-                  <li key={i}>
-                    <span className="text-sm text-[#666] hover:text-[#BFA46A] transition-colors cursor-pointer">{item}</span>
-                  </li>
+                {["Factorizer", "Reality Lens", "Pricing", "API"].map((item, i) => (
+                  <li key={i}><span className="text-sm text-[#666] hover:text-[#BFA46A] transition-colors cursor-pointer">{item}</span></li>
                 ))}
               </ul>
             </div>
             <div>
               <h4 className="text-xs font-semibold tracking-[0.15em] uppercase text-[#555] mb-4">Company</h4>
               <ul className="space-y-2">
-                {["About", "Blog", "Careers", "Contact"].map((item, i) => (
-                  <li key={i}>
-                    <span className="text-sm text-[#666] hover:text-[#BFA46A] transition-colors cursor-pointer">{item}</span>
-                  </li>
+                {["Waveform Tech", "CortexChain, Inc.", "NVIDIA Inception", "Patents"].map((item, i) => (
+                  <li key={i}><span className="text-sm text-[#666] hover:text-[#BFA46A] transition-colors cursor-pointer">{item}</span></li>
                 ))}
               </ul>
             </div>
           </div>
-          
-          <div className="pt-8 border-t border-white/5 flex flex-col md:flex-row items-center justify-between gap-4">
-            <p className="text-xs text-[#444]">&copy; 2026 Waveform Tech. All rights reserved.</p>
-            <PerplexityAttribution />
+          <div className="flex flex-col md:flex-row justify-between items-center pt-8 border-t border-white/5 gap-4">
+            <p className="text-xs text-[#444]">© 2025 Waveform Tech LLC / CortexChain, Inc. All rights reserved.</p>
+            <div className="flex gap-6">
+              <PerplexityAttribution />
+            </div>
           </div>
         </div>
       </footer>
