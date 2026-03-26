@@ -229,6 +229,8 @@ export default function RealityLensPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<typeof DEMO_DATA | null>(null);
   const [openLayers, setOpenLayers] = useState<Set<number>>(new Set([1]));
+  const [sonarIntel, setSonarIntel] = useState<{content: string; citations: string[]} | null>(null);
+  const [sonarLoading, setSonarLoading] = useState(false);
   const [, setLocation] = useLocation();
 
   const toggleLayer = (n: number) => {
@@ -239,6 +241,27 @@ export default function RealityLensPage() {
       return next;
     });
   };
+
+  const enrichWithSonar = useCallback(async (subject: string, context: any) => {
+    setSonarLoading(true);
+    setSonarIntel(null);
+    try {
+      const response = await fetch('/api/perplexity/enrich', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: `Latest market data, pricing, and news for: ${subject}`,
+          context: { subject, economics: context?.economics, ecosystem: context?.ecosystem, verdict: context?.verdict },
+        }),
+      });
+      if (!response.ok) throw new Error('Sonar unavailable');
+      const data = await response.json();
+      if (data.success) setSonarIntel({ content: data.content, citations: data.citations || [] });
+    } catch (err) {
+      setSonarIntel({ content: 'Live intel temporarily unavailable. Core analysis is complete.', citations: [] });
+    }
+    setSonarLoading(false);
+  }, []);
 
   const handleAnalyze = useCallback(async () => {
     setAnalyzing(true);
@@ -274,6 +297,7 @@ export default function RealityLensPage() {
           summary: ai.summary || "Analysis complete.",
         };
         setResult(transformed as any);
+        enrichWithSonar(ai.subject || searchQuery, transformed);
       } else {
         // Fallback to demo data
         setResult(DEMO_DATA);
@@ -796,7 +820,47 @@ export default function RealityLensPage() {
                 </div>
               </LayerSection>
 
-              {/* ═══ Verdict Panel ═══ */}
+              {/* Perplexity Sonar Live Intel Panel */}
+              <div className="p-5 rounded-xl bg-[#0f0f0f] border border-[#0EA5E9]/20 mb-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-[#0EA5E9] animate-pulse" />
+                    <span className="text-xs font-semibold text-[#0EA5E9] tracking-wider uppercase">Perplexity Sonar · Live Intel</span>
+                  </div>
+                  {!sonarIntel && !sonarLoading && (
+                    <button onClick={() => enrichWithSonar(result.subject, result)}
+                      className="text-xs px-3 py-1 border border-[#0EA5E9]/30 text-[#0EA5E9] rounded hover:bg-[#0EA5E9]/5 transition-colors">
+                      Fetch Live Intel
+                    </button>
+                  )}
+                </div>
+                {sonarLoading && (
+                  <div className="flex items-center gap-2 text-xs text-[#555]">
+                    <div className="w-3 h-3 border border-[#0EA5E9]/40 border-t-[#0EA5E9] rounded-full animate-spin" />
+                    Querying live market data via Perplexity Sonar...
+                  </div>
+                )}
+                {sonarIntel && (
+                  <div>
+                    <p className="text-sm text-[#999] leading-relaxed whitespace-pre-wrap">{sonarIntel.content}</p>
+                    {sonarIntel.citations.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {sonarIntel.citations.slice(0, 4).map((cite, i) => (
+                          <a key={i} href={cite} target="_blank" rel="noopener noreferrer"
+                            className="text-xs px-2 py-0.5 bg-[#0EA5E9]/5 border border-[#0EA5E9]/20 text-[#0EA5E9] rounded hover:bg-[#0EA5E9]/10 transition-colors">
+                            [{i+1}] Source
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {!sonarIntel && !sonarLoading && (
+                  <p className="text-xs text-[#555]">Live pricing, news, and competitor intel via Perplexity Sonar.</p>
+                )}
+              </div>
+
+              {/* Verdict Panel */}
               <div className="rounded-xl bg-[#111]/80 border border-[#BFA46A]/20 p-6 mt-6">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-10 h-10 rounded-lg bg-[#BFA46A]/15 flex items-center justify-center">
@@ -861,4 +925,5 @@ export default function RealityLensPage() {
     </div>
   );
 }
+
 
