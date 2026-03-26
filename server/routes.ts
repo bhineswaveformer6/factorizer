@@ -27,7 +27,6 @@ export async function registerRoutes(
         return;
       }
 
-      // Validate file type
       const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/heic"];
       if (!allowedTypes.includes(file.mimetype)) {
         res.status(400).json({ error: "Invalid file type. Please upload JPEG, PNG, WebP, or HEIC." });
@@ -36,10 +35,7 @@ export async function registerRoutes(
 
       console.log(`[Factorizer] Analyzing ${file.originalname} (${(file.size / 1024).toFixed(1)}KB, ${file.mimetype})`);
 
-      // Convert to base64
       const imageBase64 = file.buffer.toString("base64");
-
-      // Run AI analysis
       const analysis = await analyzeProductPhoto(imageBase64, file.mimetype);
 
       console.log(`[Factorizer] Analysis complete: ${analysis.product_name} (confidence: ${analysis.confidence})`);
@@ -49,7 +45,7 @@ export async function registerRoutes(
         analysis,
         meta: {
           engine: "factorizer",
-          model: "gpt_5_4",
+          model: "gpt-4o",
           timestamp: new Date().toISOString(),
           image_size_kb: Math.round(file.size / 1024),
         },
@@ -77,7 +73,6 @@ export async function registerRoutes(
       const trimmedQuery = query.trim();
       console.log(`[Reality Lens] Analyzing: "${trimmedQuery}"`);
 
-      // Run AI analysis
       const analysis = await analyzeWithRealityLens(trimmedQuery);
 
       console.log(`[Reality Lens] Analysis complete: ${analysis.subject} (verdict: ${analysis.verdict?.recommended})`);
@@ -87,7 +82,7 @@ export async function registerRoutes(
         analysis,
         meta: {
           engine: "reality-lens",
-          model: "gpt_5_4",
+          model: "gpt-4o",
           timestamp: new Date().toISOString(),
           query: trimmedQuery,
         },
@@ -98,6 +93,68 @@ export async function registerRoutes(
         success: false,
         error: error.message || "Analysis failed. Please try again.",
       });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // PERPLEXITY SONAR — Live market intelligence enrichment
+  // ═══════════════════════════════════════════════════════════
+  app.post("/api/perplexity/enrich", async (req: Request, res: Response) => {
+    try {
+      const { query, context } = req.body;
+      if (!query) {
+        res.status(400).json({ error: "query is required" });
+        return;
+      }
+
+      const apiKey = process.env.PERPLEXITY_API_KEY;
+      if (!apiKey) {
+        res.status(503).json({ error: "Perplexity not configured" });
+        return;
+      }
+
+      const prompt = context
+        ? `You are a market intelligence analyst. Given the following product analysis context:\n\n${JSON.stringify(context, null, 2)}\n\nAnswer this query with current market data, recent news, and real pricing: ${query}`
+        : `You are a market intelligence analyst. Provide current market data, recent news, competitor pricing, and supply chain intel for: ${query}`;
+
+      const response = await fetch("https://api.perplexity.ai/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "sonar-pro",
+          messages: [
+            { role: "system", content: "You are a precise market intelligence engine. Always cite sources. Be concise and data-dense." },
+            { role: "user", content: prompt },
+          ],
+          max_tokens: 1024,
+          return_citations: true,
+          search_recency_filter: "month",
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Perplexity API error: ${response.status}`);
+      }
+
+      const data = await response.json() as any;
+      const content = data.choices?.[0]?.message?.content || "";
+      const citations = data.citations || [];
+
+      console.log(`[Perplexity] Enriched: "${query}" — ${citations.length} citations`);
+
+      res.json({
+        success: true,
+        content,
+        citations,
+        model: "sonar-pro",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      console.error("[Perplexity] Error:", error.message);
+      res.status(500).json({ success: false, error: error.message });
     }
   });
 
@@ -166,8 +223,9 @@ export async function registerRoutes(
         factorizer: "active",
         reality_lens: "active",
         volts_vault: "active",
+        perplexity_sonar: process.env.PERPLEXITY_API_KEY ? "active" : "not_configured",
       },
-      version: "1.1.0",
+      version: "1.2.0",
       by: "Waveform Tech",
     });
   });
