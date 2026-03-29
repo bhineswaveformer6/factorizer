@@ -6,10 +6,21 @@ import { voltsVault, type VoltEventType } from "./services/voltsVault";
 import { computePINK } from "./services/pinkScorer";
 import { computeVOLT } from "./services/voltScorer";
 import { computeMOAT } from "./services/moatScorer";
+import { hashInput, getCache, setCache } from "./lib/cache";
 import OpenAI from "openai";
 import multer from "multer";
 
 const openai = new OpenAI();
+
+// In-memory waitlist store
+interface WaitlistEntry {
+  email: string;
+  first_name?: string;
+  use_case?: string;
+  created_at: string;
+  status: string;
+}
+const waitlist: WaitlistEntry[] = [];
 
 // In-memory signal store
 interface Signal {
@@ -123,6 +134,18 @@ export async function registerRoutes(
       const trimmedQuery = query.trim();
       console.log(`[Reality Lens] Analyzing: "${trimmedQuery}"`);
 
+      // Check cache first
+      const cacheKey = hashInput(trimmedQuery);
+      const cached = getCache(cacheKey);
+      if (cached) {
+        console.log(`[Reality Lens] Cache hit for: "${trimmedQuery}"`);
+        res.json({
+          ...cached,
+          meta: { ...cached.meta, cached: true },
+        });
+        return;
+      }
+
       // Run AI analysis
       const analysis = await analyzeWithRealityLens(trimmedQuery);
 
@@ -135,7 +158,7 @@ export async function registerRoutes(
 
       console.log(`[Reality Lens] Analysis complete: ${analysis.subject} (verdict: ${analysis.verdict?.recommended})`);
 
-      res.json({
+      const fullResult = {
         success: true,
         analysis,
         pink,
@@ -147,7 +170,12 @@ export async function registerRoutes(
           timestamp: new Date().toISOString(),
           query: trimmedQuery,
         },
-      });
+      };
+
+      // Cache the result
+      setCache(cacheKey, fullResult);
+
+      res.json(fullResult);
     } catch (error: any) {
       console.error("[Reality Lens] Error:", error.message);
       res.status(500).json({
@@ -323,6 +351,43 @@ Rules:
     }
     signal.status = status;
     res.json({ success: true, signal });
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // WAITLIST CRM
+  // ═══════════════════════════════════════════════════════════
+  app.post("/api/waitlist", async (req: Request, res: Response) => {
+    try {
+      const { email, first_name, use_case } = req.body;
+      if (!email || typeof email !== "string" || !email.includes("@")) {
+        res.status(400).json({ error: "A valid email is required." });
+        return;
+      }
+
+      const entry: WaitlistEntry = {
+        email: email.trim(),
+        first_name: first_name?.trim() || undefined,
+        use_case: use_case || undefined,
+        created_at: new Date().toISOString(),
+        status: "new",
+      };
+
+      waitlist.push(entry);
+      const position = waitlist.length;
+
+      console.log(`[Waitlist] New entry #${position}: ${entry.email}`);
+      res.json({ success: true, position });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  app.get("/api/waitlist/count", async (_req: Request, res: Response) => {
+    res.json({ count: waitlist.length });
+  });
+
+  app.get("/api/waitlist/list", async (_req: Request, res: Response) => {
+    res.json({ success: true, entries: waitlist });
   });
 
   // ═══════════════════════════════════════════════════════════

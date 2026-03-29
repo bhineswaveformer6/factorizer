@@ -11,6 +11,7 @@ import {
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend
 } from "recharts";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
+import WaitlistCapture from "@/components/WaitlistCapture";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -142,7 +143,7 @@ export default function AnalyzePage() {
       const formData = new FormData();
       formData.append('image', file);
 
-      const response = await fetch('/api/factorize', {
+      const response = await fetch('./api/factorize', {
         method: 'POST',
         body: formData,
       });
@@ -624,6 +625,7 @@ export default function AnalyzePage() {
           )}
         </div>
       </main>
+      <WaitlistCapture />
     </div>
   );
 }

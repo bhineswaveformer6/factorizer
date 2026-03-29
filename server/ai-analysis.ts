@@ -206,9 +206,47 @@ When given a product/company/technology name, you MUST return a JSON object with
       {"action": "BUILD | ACQUIRE | PARTNER | REMIX", "confidence": 0.0 to 1.0, "rationale": "Why"}
     ]
   },
-  
-  "summary": "3-4 sentence executive summary of the full strategic analysis"
+
+  "summary": "3-4 sentence executive summary of the full strategic analysis",
+
+  "molecular_map": {
+    "offer_atoms": [{"atom": "string", "clarity": "clear|vague", "necessity": "necessary|nice-to-have|dead-weight"}],
+    "mechanic_atoms": [{"atom": "string", "clarity": "clear|vague", "necessity": "necessary|nice-to-have|dead-weight"}],
+    "money_atoms": [{"atom": "string", "clarity": "clear|vague", "necessity": "necessary|nice-to-have|dead-weight"}],
+    "trust_atoms": [{"atom": "string", "clarity": "clear|vague", "necessity": "necessary|nice-to-have|dead-weight"}]
+  },
+  "attention_leak": "one sentence - where should market attention be that it isn't?",
+  "money_leak": "one sentence - where is value created but not captured?",
+  "hidden_wedge": "one sentence - sharpest entry point to win first",
+  "son_line": {
+    "today": "what this means right now",
+    "tomorrow": "near-future decision or application",
+    "generalized": "how this scales to market or ecosystem"
+  },
+  "buffett_lens": {
+    "circle_of_competence": "inside|adjacent|outside",
+    "capital_intensity": "asset-light|moderate|asset-heavy",
+    "float_like_dynamics": "none|weak|strong",
+    "permanent_loss_risk": "one sentence"
+  },
+  "differential_moat": {
+    "cost_curve": {"answer": "YES|NO", "reason": "one sentence"},
+    "network_effects": {"answer": "YES|NO|WEAK", "reason": "one sentence"},
+    "business_model_flip": {"answer": "YES|NO", "reason": "one sentence"},
+    "off_grid_edge": {"answer": "YES|NO", "reason": "one sentence"},
+    "today_advantage": "one sentence",
+    "if_scaled_becomes": "one sentence",
+    "incumbent_pain_if_copy": "one sentence"
+  },
+  "emoji_tags": "string of 4-8 emojis from: ⛲️💎🏰🪴😈📖🔥💯💶💴💸💰",
+  "flywheel_next_action": {
+    "label": "imperative sentence",
+    "route": "/reality-lens or /analyze",
+    "flywheel_stage": "awareness|activation|insight|decision|share|return"
+  }
 }
+
+IMPORTANT: You MUST include ALL fields above — both the 5-layer analysis (identity, anatomy, process, economics, ecosystem, verdict, summary) AND the additional framework fields (molecular_map, attention_leak, money_leak, hidden_wedge, son_line, buffett_lens, differential_moat, emoji_tags, flywheel_next_action). Return the complete JSON object with every field populated.
 
 Be specific, data-driven, and grounded in real market knowledge. Use actual competitor names, real pricing data, real market sizes. If you're estimating, say so. Provide institutional-grade strategic intelligence — the kind a McKinsey analyst would deliver.`;
 

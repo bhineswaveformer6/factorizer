@@ -27,7 +27,7 @@ export default function AdminSignalsPage() {
 
   const fetchSignals = useCallback(async () => {
     try {
-      const res = await fetch("/api/signals");
+      const res = await fetch("./api/signals");
       const data = await res.json();
       if (data.success) {
         setSignals(data.signals);

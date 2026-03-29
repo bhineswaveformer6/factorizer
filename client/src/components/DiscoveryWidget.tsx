@@ -57,7 +57,7 @@ export function DiscoveryWidget({
     setError(null);
 
     try {
-      const response = await fetch('/api/reality-lens', {
+      const response = await fetch('./api/reality-lens', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: searchQuery }),

@@ -10,6 +10,7 @@ import AnalyzePage from "@/pages/analyze";
 import RealityLensPage from "@/pages/reality-lens";
 import WidgetPage from "@/pages/widget";
 import AdminSignalsPage from "@/pages/admin-signals";
+import AdminWaitlistPage from "@/pages/admin-waitlist";
 
 function AppRouter() {
   return (
@@ -19,6 +20,7 @@ function AppRouter() {
       <Route path="/reality-lens" component={RealityLensPage} />
       <Route path="/widget" component={WidgetPage} />
       <Route path="/admin/signals" component={AdminSignalsPage} />
+      <Route path="/admin/waitlist" component={AdminWaitlistPage} />
       <Route path="/reports" component={AnalyzePage} />
       <Route path="/settings" component={AnalyzePage} />
       <Route component={NotFound} />

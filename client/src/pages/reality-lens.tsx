@@ -12,6 +12,8 @@ import {
   PolarRadiusAxis, Radar, Legend
 } from "recharts";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
+import WaitlistCapture from "@/components/WaitlistCapture";
+import ArchonGatewayPanel from "@/components/ArchonGatewayPanel";
 
 /* ─────── Logo ─────── */
 function FactorizerLogo({ className = "h-7" }: { className?: string }) {
@@ -228,6 +230,7 @@ export default function RealityLensPage() {
   const [query, setQuery] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<typeof DEMO_DATA | null>(null);
+  const [analysisScores, setAnalysisScores] = useState<{ pink?: number; volt?: number; moat?: number }>({});
   const [openLayers, setOpenLayers] = useState<Set<number>>(new Set([1]));
   const [, setLocation] = useLocation();
 
@@ -247,7 +250,7 @@ export default function RealityLensPage() {
     const searchQuery = query.trim() || "Apple AirPods Pro 2";
     
     try {
-      const response = await fetch('/api/reality-lens', {
+      const response = await fetch('./api/reality-lens', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: searchQuery }),
@@ -274,14 +277,21 @@ export default function RealityLensPage() {
           summary: ai.summary || "Analysis complete.",
         };
         setResult(transformed as any);
+        setAnalysisScores({
+          pink: data.pink?.critical_node?.score,
+          volt: data.volt?.score,
+          moat: data.moat?.score,
+        });
       } else {
         // Fallback to demo data
         setResult(DEMO_DATA);
+        setAnalysisScores({});
       }
     } catch (error) {
       console.error('Reality Lens error:', error);
       // Fallback to demo data on error
       setResult(DEMO_DATA);
+      setAnalysisScores({});
     }
     
     setAnalyzing(false);
@@ -839,6 +849,9 @@ export default function RealityLensPage() {
                 </div>
               </div>
 
+              {/* ARCHON Ψ Gateway Panel */}
+              <ArchonGatewayPanel analysisScores={analysisScores} />
+
               {/* Footer */}
               <div className="pt-6 border-t border-white/5 flex flex-col md:flex-row items-center justify-between gap-4">
                 <p className="text-xs text-[#444]">&copy; 2026 Waveform Tech. All rights reserved.</p>
@@ -858,6 +871,7 @@ export default function RealityLensPage() {
           )}
         </div>
       </main>
+      <WaitlistCapture />
     </div>
   );
 }
