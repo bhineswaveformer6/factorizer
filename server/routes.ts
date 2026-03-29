@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { ledger } from "./lib/ledger";
 import { analyzeProductPhoto, analyzeWithRealityLens, runCopilot } from "./ai-analysis";
 import { voltsVault, type VoltEventType } from "./services/voltsVault";
 import { computePINK } from "./services/pinkScorer";
@@ -175,7 +176,22 @@ export async function registerRoutes(
       // Cache the result
       setCache(cacheKey, fullResult);
 
-      res.json(fullResult);
+      // Auto-save to Intelligence Ledger
+      const ledgerEntry = ledger.save({
+        type: "reality-lens",
+        subject: trimmedQuery,
+        query: trimmedQuery,
+        analysis: fullResult.analysis,
+        scores: {
+          volt: fullResult.volt?.score,
+          moat: fullResult.moat?.score,
+          pink_level: String(fullResult.pink?.critical_node?.score || ""),
+        },
+        verdict: fullResult.analysis?.verdict?.recommended,
+        tags: [fullResult.analysis?.type || "product", fullResult.analysis?.identity?.category || ""].filter(Boolean),
+      });
+
+      res.json({ ...fullResult, ledger_id: ledgerEntry.id });
     } catch (error: any) {
       console.error("[Reality Lens] Error:", error.message);
       res.status(500).json({
@@ -393,6 +409,39 @@ Rules:
       version: "1.1.0",
       by: "Waveform Tech",
     });
+  });
+
+
+  // ═══════════════════════════════════════════════════════════
+  // INTELLIGENCE LEDGER — Save, list, search, compare
+  // ═══════════════════════════════════════════════════════════
+  app.get("/api/ledger", (_req: Request, res: Response) => {
+    res.json({ success: true, entries: ledger.list(), count: ledger.count() });
+  });
+
+  app.get("/api/ledger/search", (req: Request, res: Response) => {
+    const results = ledger.search((req.query.q as string) || "");
+    res.json({ success: true, results, count: results.length });
+  });
+
+  app.get("/api/ledger/:id", (req: Request, res: Response) => {
+    const entry = ledger.get(req.params.id);
+    if (!entry) { res.status(404).json({ success: false, error: "Not found" }); return; }
+    res.json({ success: true, entry });
+  });
+
+  app.post("/api/ledger/compare", (req: Request, res: Response) => {
+    const { id1, id2 } = req.body;
+    const comparison = ledger.compare(id1, id2);
+    if (!comparison) { res.status(404).json({ success: false, error: "Entry not found" }); return; }
+    res.json({ success: true, comparison });
+  });
+
+  app.patch("/api/ledger/:id/annotate", (req: Request, res: Response) => {
+    const { notes, tags } = req.body;
+    const entry = ledger.annotate(req.params.id, notes, tags);
+    if (!entry) { res.status(404).json({ success: false, error: "Not found" }); return; }
+    res.json({ success: true, entry });
   });
 
   return httpServer;
