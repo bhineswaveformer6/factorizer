@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { analyzeProductPhoto, analyzeWithRealityLens } from "./ai-analysis";
+import { analyzeProductPhoto, analyzeWithRealityLens, runCopilot } from "./ai-analysis";
 import { voltsVault, type VoltEventType } from "./services/voltsVault";
 import { computePINK } from "./services/pinkScorer";
 import { computeVOLT } from "./services/voltScorer";
@@ -10,7 +10,7 @@ import { hashInput, getCache, setCache } from "./lib/cache";
 import OpenAI from "openai";
 import multer from "multer";
 
-const openai = new OpenAI();
+// NIM inference via ai-analysis.ts
 
 // In-memory waitlist store
 interface WaitlistEntry {
@@ -106,7 +106,7 @@ export async function registerRoutes(
         analysis,
         meta: {
           engine: "factorizer",
-          model: "gpt_5_4",
+          model: "nvidia-nim/nemotron",
           timestamp: new Date().toISOString(),
           image_size_kb: Math.round(file.size / 1024),
         },
@@ -166,7 +166,7 @@ export async function registerRoutes(
         moat,
         meta: {
           engine: "reality-lens",
-          model: "gpt_5_4",
+          model: "nvidia-nim/nemotron",
           timestamp: new Date().toISOString(),
           query: trimmedQuery,
         },
@@ -253,18 +253,7 @@ export async function registerRoutes(
 
       console.log(`[Copilot] Message: "${message.trim().slice(0, 80)}"`);
 
-      const response = await openai.responses.create({
-        model: "gpt_5_4",
-        instructions: COPILOT_SYSTEM_PROMPT,
-        input: message.trim(),
-      });
-
-      const reply = response.output
-        .filter((b: any) => b.type === "message")
-        .flatMap((b: any) => b.content)
-        .filter((c: any) => c.type === "output_text")
-        .map((c: any) => c.text)
-        .join("");
+      const reply = await runCopilot(message.trim(), COPILOT_SYSTEM_PROMPT);
 
       res.json({ reply });
     } catch (error: any) {
@@ -285,7 +274,7 @@ export async function registerRoutes(
       }
 
       const response = await openai.responses.create({
-        model: "gpt_5_4",
+        model: "nvidia-nim/nemotron",
         instructions: `You are a signal triage engine. Classify inbound messages by priority, intent, and urgency.
 Return JSON only:
 {"priority":"critical|strategic|iteration","intent":"one sentence describing what they want","urgency_score":1-100}
