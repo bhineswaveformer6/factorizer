@@ -4,23 +4,45 @@ import fs from 'fs';
 
 export const config = { api: { bodyParser: false } };
 
-const MODEL   = "qwen/qwen3-vl-32b-instruct";
+const MODEL    = "qwen/qwen3-vl-32b-instruct";
 const BASE_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-const SYSTEM_PROMPT = `You are Factorizer, an expert AI product intelligence engine by CortexChain / Waveform Tech.
+// ── PINK FORMULA: P × I × √(N × K) ──────────────────────────────────────────
+// P = Probability of failure (0–10)
+// I = Impact severity when it fails (0–10)
+// N = Number of system dependencies on this component
+// K = Knowledge gap score (0–10; how poorly understood the failure mode is)
+function computePINK(components: Array<{p:number;i:number;n:number;k:number;name:string}>): {
+  critical_node: string; score: number; band: string; components: typeof components & { pink: number }[];
+} {
+  const scored = components.map(c => ({
+    ...c,
+    pink: Math.round(c.p * c.i * Math.sqrt(c.n * c.k) * 10) / 10
+  }));
+  scored.sort((a, b) => b.pink - a.pink);
+  const top = scored[0];
+  const band = top.pink >= 300 ? "CRITICAL" : top.pink >= 150 ? "HIGH" : top.pink >= 50 ? "MEDIUM" : "LOW";
+  return { critical_node: top?.name || "Unknown", score: top?.pink || 0, band, components: scored };
+}
 
-CRITICAL SCORING RULES:
-- Score every factor based on actual product-specific knowledge for THIS specific product.
-- DO NOT copy or repeat any example numbers. Every product gets unique scores.
-- Scores are 0.0-10.0. A software product should score differently on Core/Silicon than a GPU.
-- A product with regulatory risk should score lower on Error Resilience.
-- Confidence should reflect data availability — inferred = 0.55-0.70, well-documented = 0.80-0.92.
-- If a product is risky or low-moat, score it WATCH, PASS, or REJECT.
-- Return ONLY valid JSON. No markdown. No explanation text.`;
+const SYSTEM_PROMPT = `You are Factorizer — a universal system comprehension engine by CortexChain / Waveform Tech.
+
+You X-ray any object: software, hardware, physical infrastructure, industrial machinery, or geotechnical systems.
+
+CRITICAL RULES:
+1. Score every field based on actual knowledge of THIS specific product. No template copying.
+2. PINK components: assign realistic P, I, N, K values (0-10). The highest PINK = Critical Node.
+3. Intelligence Brief uses EXACTLY 5 fixed fields — no deviation.
+4. Return ONLY valid JSON. No markdown. No explanation.
+5. NO OpenAI references anywhere in output.`;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(204).end();
-  if (req.method !== 'POST')   return res.status(405).json({ error: 'POST only' });
+  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'OPENROUTER_API_KEY not configured' });
@@ -29,75 +51,115 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const form = formidable({ maxFileSize: 10 * 1024 * 1024 });
     const [fields, files] = await form.parse(req);
 
-    const query = Array.isArray(fields.query) ? fields.query[0] : fields.query || '';
+    const query = Array.isArray(fields.query) ? fields.query[0] : (fields.query || '') as string;
     const file  = files.image?.[0];
+    const layer = Array.isArray(fields.layer) ? fields.layer[0] : (fields.layer || 'full') as string;
 
     if (!query && !file) return res.status(400).json({ error: 'query text or image file required' });
 
+    const subject = query || file?.originalFilename?.replace(/\.[^.]+$/, '') || 'Unknown Product';
+
     const content: any[] = [{
       type: 'text',
-      text: `Analyze this specific product: "${query || file?.originalFilename || 'uploaded product'}"
+      text: `Perform a complete 5-layer Factorizer teardown of: "${subject}"
 
-IMPORTANT: Replace every [SCORE] with your actual assessment for THIS product.
-Do NOT repeat the same score across fields unless the product genuinely warrants it.
+You must return this EXACT JSON structure. Replace every [SCORE] and [VALUE] with real data for THIS specific product.
 
-Return this exact JSON structure:
 {
-  "title": "[product canonical name]",
-  "category": "[Primary Category] · [Subcategory]",
-  "summary": "[2-3 sentences of specific competitive intelligence. Name real differentiators and real risks.]",
-  "confidence": [SCORE 0.0-1.0],
-  "identity": {
-    "entity": "[canonical name]",
-    "product_type": "[hardware|software|platform|system]",
-    "use_case": "[specific primary use case]",
-    "manufacturer": "[company name]",
-    "price_range": "[actual price or range]"
+  "subject": "${subject}",
+  "system_type": "[software|hardware|infrastructure|geotechnical|biological|mechanical]",
+  "one_line": "[one sentence, no jargon — what this IS]",
+  
+  "intelligence_brief": {
+    "what_it_is": "[one sentence — canonical identity, no jargon]",
+    "what_it_does": "[the specific job it performs — functional description]",
+    "how_it_works": "[mechanics in plain language — the actual operating principle]",
+    "where_it_fails": [
+      {"mode": "[failure mode 1]", "probability": [1-10], "severity": [1-10]},
+      {"mode": "[failure mode 2]", "probability": [1-10], "severity": [1-10]},
+      {"mode": "[failure mode 3]", "probability": [1-10], "severity": [1-10]}
+    ],
+    "what_to_watch": [
+      "[early warning signal 1 — specific, measurable]",
+      "[early warning signal 2 — specific, measurable]",
+      "[early warning signal 3 — specific, measurable]"
+    ]
   },
+  
+  "layers": {
+    "L1_anatomy": {
+      "components": [
+        {"name": "[component name]", "role": "[function]", "layer_type": "[SILICON|MECHANICAL|IO_SENSOR|SOFTWARE|SUPPLY_CHAIN|PRICING|MOAT]", "cost_est": "[$ or free text]"},
+        {"name": "[component name]", "role": "[function]", "layer_type": "[type]", "cost_est": "[$ or free text]"},
+        {"name": "[component name]", "role": "[function]", "layer_type": "[type]", "cost_est": "[$ or free text]"},
+        {"name": "[component name]", "role": "[function]", "layer_type": "[type]", "cost_est": "[$ or free text]"},
+        {"name": "[component name]", "role": "[function]", "layer_type": "[type]", "cost_est": "[$ or free text]"}
+      ],
+      "total_bom_est": "[$ range or description]",
+      "complexity_score": [SCORE 1-10]
+    },
+    "L2_mechanics": {
+      "data_or_energy_flow": "[how inputs become outputs — the operating chain]",
+      "key_interfaces": ["[interface 1]", "[interface 2]", "[interface 3]"],
+      "bottleneck": "[the single step that limits performance or capacity]",
+      "diagram_description": "[isometric/cutaway/flow — what the X-ray would show]"
+    },
+    "L3_swot": {
+      "strengths": ["[strength 1]", "[strength 2]", "[strength 3]"],
+      "weaknesses": ["[weakness 1]", "[weakness 2]"],
+      "opportunities": ["[opportunity 1]", "[opportunity 2]"],
+      "threats": ["[threat 1]", "[threat 2]"],
+      "competitors": [
+        {"name": "[competitor]", "price": "[$ range]", "gap": "[key differentiator vs subject]"},
+        {"name": "[competitor]", "price": "[$ range]", "gap": "[key differentiator vs subject]"}
+      ]
+    },
+    "L4_reality_lens": {
+      "buyer_profile": "[specific buyer — role, firm size, trigger event]",
+      "purchase_trigger": "[the specific event that causes them to buy]",
+      "growth_vector": "[the single biggest expansion opportunity]",
+      "moat_analysis": "[what makes this defensible or not — be honest]",
+      "trajectory": "[ASCENDING|STABLE|DESCENDING]",
+      "trajectory_reason": "[why — one sentence]"
+    },
+    "L5_blueprint": {
+      "recommended_action": "[BUILD|ACQUIRE|PARTNER|REMIX|INVEST|AVOID]",
+      "action_rationale": "[specific reasoning for THIS product]",
+      "key_risk_if_wrong": "[what happens if the action recommendation is incorrect]",
+      "share_token": "[factorizer-${subject.replace(/\s+/g, '-').toLowerCase()}-v1]"
+    }
+  },
+  
+  "pink": {
+    "components": [
+      {"name": "[critical component 1]", "p": [0-10], "i": [0-10], "n": [0-10], "k": [0-10]},
+      {"name": "[critical component 2]", "p": [0-10], "i": [0-10], "n": [0-10], "k": [0-10]},
+      {"name": "[critical component 3]", "p": [0-10], "i": [0-10], "n": [0-10], "k": [0-10]},
+      {"name": "[critical component 4]", "p": [0-10], "i": [0-10], "n": [0-10], "k": [0-10]},
+      {"name": "[critical component 5]", "p": [0-10], "i": [0-10], "n": [0-10], "k": [0-10]}
+    ]
+  },
+  
   "qtac7": [
-    {"name": "Q · Product Quality",       "score": [SCORE], "pct": [score×10]},
-    {"name": "T · Economic Return",        "score": [SCORE], "pct": [score×10]},
-    {"name": "A · Market Alignment",       "score": [SCORE], "pct": [score×10]},
-    {"name": "C · Moat Durability",        "score": [SCORE], "pct": [score×10]},
-    {"name": "D · Compounding Trajectory", "score": [SCORE], "pct": [score×10]},
-    {"name": "R · Reinvestment Runway",    "score": [SCORE], "pct": [score×10]},
-    {"name": "V · Error Resilience",       "score": [SCORE], "pct": [score×10]}
+    {"name": "Q · Product Quality",       "score": [SCORE 0-10], "pct": [score×10]},
+    {"name": "T · Economic Return",        "score": [SCORE 0-10], "pct": [score×10]},
+    {"name": "A · Market Alignment",       "score": [SCORE 0-10], "pct": [score×10]},
+    {"name": "C · Moat Durability",        "score": [SCORE 0-10], "pct": [score×10]},
+    {"name": "D · Compounding Trajectory", "score": [SCORE 0-10], "pct": [score×10]},
+    {"name": "R · Reinvestment Runway",    "score": [SCORE 0-10], "pct": [score×10]},
+    {"name": "V · Error Resilience",       "score": [SCORE 0-10], "pct": [score×10]}
   ],
-  "stone_score": [SCORE weighted composite 0.0-10.0],
-  "stone_band": "[STRONG YES≥8.0 | BUY 6.5-7.9 | WATCH 5.0-6.4 | PASS 3.0-4.9 | REJECT<3.0]",
-  "omega_gap": [absolute diff between QTAC avg and stone_score],
-  "layers": [
-    {"num": "L1", "icon": "⚡", "name": "Core/Silicon",     "desc": "[specific detail for THIS product]", "score": [SCORE]},
-    {"num": "L2", "icon": "🧠", "name": "Memory/Storage",   "desc": "[specific detail for THIS product]", "score": [SCORE]},
-    {"num": "L3", "icon": "🔗", "name": "Connectivity",     "desc": "[specific detail for THIS product]", "score": [SCORE]},
-    {"num": "L4", "icon": "💻", "name": "Software/FW",      "desc": "[specific detail for THIS product]", "score": [SCORE]},
-    {"num": "L5", "icon": "🏭", "name": "Supply Chain",     "desc": "[specific detail for THIS product]", "score": [SCORE]},
-    {"num": "L6", "icon": "💰", "name": "Pricing/ASP",      "desc": "[specific detail for THIS product]", "score": [SCORE]},
-    {"num": "L7", "icon": "🏰", "name": "Competitive Moat", "desc": "[specific detail for THIS product]", "score": [SCORE]}
-  ],
-  "signals": [
-    {"type": "bull", "tag": "[TAG]", "text": "[specific bullish signal for THIS product]"},
-    {"type": "bear", "tag": "[TAG]", "text": "[specific bearish risk for THIS product]"},
-    {"type": "neut", "tag": "[TAG]", "text": "[specific neutral observation for THIS product]"},
-    {"type": "[bull|bear|neut]", "tag": "[TAG]", "text": "[fourth signal for THIS product]"}
-  ],
-  "moves": [
-    {"title": "[action]", "type": "PROVE",   "body": "[specific action]", "risk": "[risk if ignored]"},
-    {"title": "[action]", "type": "IMPROVE", "body": "[specific action]", "risk": "[risk if ignored]"},
-    {"title": "[action]", "type": "PROTECT", "body": "[specific action]", "risk": "[risk if ignored]"}
-  ],
-  "evidence_gaps": ["[real missing data point 1]", "[real missing data point 2]", "[real missing data point 3]"],
-  "provenance": {
-    "data_source": "[what knowledge was used]",
-    "confidence_basis": "[why this confidence level]",
-    "comparables": ["[real comparable 1]", "[real comparable 2]"]
-  }
+  
+  "confidence": [SCORE 0.0-1.0],
+  "evidence_gaps": ["[specific missing data 1]", "[specific missing data 2]", "[specific missing data 3]"],
+  "volts_earned": [integer 1-5 based on teardown completeness]
 }`
     }];
 
+    // Attach image if provided
     if (file) {
       const imageBuffer = fs.readFileSync(file.filepath);
-      const b64 = imageBuffer.toString('base64');
+      const b64  = imageBuffer.toString('base64');
       const mime = file.mimetype || 'image/jpeg';
       content.push({ type: 'image_url', image_url: { url: `data:${mime};base64,${b64}` } });
     }
@@ -109,67 +171,84 @@ Return this exact JSON structure:
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'https://factorizer.cortexchain.io',
-        'X-Title': 'Factorizer by CortexChain'
+        'X-Title': 'Factorizer — Universal System Comprehension Engine'
       },
       body: JSON.stringify({
         model: MODEL,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content }
+          { role: 'user',   content }
         ],
         response_format: { type: 'json_object' },
-        temperature: 0.25,
-        max_tokens: 2200
+        temperature: 0.20,
+        max_tokens: 3000
       })
     });
 
     if (!orRes.ok) {
       const errText = await orRes.text().catch(() => 'unknown');
-      return res.status(502).json({ success: false, error: `OpenRouter error ${orRes.status}`, detail: errText });
+      return res.status(502).json({ success: false, error: `OpenRouter ${orRes.status}`, detail: errText });
     }
 
-    const orData = await orRes.json();
-    const raw    = orData.choices?.[0]?.message?.content || '';
+    const orData    = await orRes.json();
+    const raw       = orData.choices?.[0]?.message?.content || '';
     const latencyMs = Date.now() - t0;
 
     let analysis: any;
-    try {
-      analysis = JSON.parse(raw);
-    } catch {
-      return res.status(422).json({ success: false, error: 'Model returned invalid JSON', raw: raw.slice(0, 500) });
+    try { analysis = JSON.parse(raw); }
+    catch { return res.status(422).json({ success: false, error: 'Invalid JSON from model', raw: raw.slice(0, 500) }); }
+
+    // ── Compute PINK server-side (never trust model's PINK score)
+    if (Array.isArray(analysis.pink?.components) && analysis.pink.components.length > 0) {
+      const pinkResult = computePINK(analysis.pink.components.map((c: any) => ({
+        name: c.name || 'Unknown',
+        p: Math.min(10, Math.max(0, Number(c.p) || 5)),
+        i: Math.min(10, Math.max(0, Number(c.i) || 5)),
+        n: Math.min(10, Math.max(0, Number(c.n) || 3)),
+        k: Math.min(10, Math.max(0, Number(c.k) || 3)),
+      })));
+      analysis.pink = pinkResult;
     }
 
-    // Normalize scores deterministically
-    if (analysis.stone_score > 10) analysis.stone_score = analysis.stone_score / 10;
-    analysis.stone_score = Math.round(Number(analysis.stone_score || 0) * 100) / 100;
-    if (analysis.confidence > 1)   analysis.confidence  = analysis.confidence  / 100;
-
-    const weights = [0.20, 0.15, 0.15, 0.15, 0.15, 0.10, 0.10];
+    // ── Compute Stone Score from QTAC₇ (deterministic)
+    const WEIGHTS = [0.20, 0.15, 0.15, 0.15, 0.15, 0.10, 0.10];
     if (Array.isArray(analysis.qtac7) && analysis.qtac7.length >= 7) {
-      analysis.qtac7 = analysis.qtac7.map((f: any) => {
-        const s = Number(f.score) > 10 ? Number(f.score)/10 : Number(f.score)||0;
+      analysis.qtac7 = analysis.qtac7.map((f: any, i: number) => {
+        const s = Number(f.score) > 10 ? Number(f.score)/10 : Number(f.score) || 5;
         return { ...f, score: Math.round(s*100)/100, pct: Math.round(s*10) };
       });
-      analysis.stone_score = Math.round(
-        analysis.qtac7.slice(0,7).reduce((a: number, f: any, i: number) =>
-          a + Math.min(10, Math.max(0, f.score)) * weights[i], 0) * 100) / 100;
+      const stone = analysis.qtac7.slice(0,7).reduce(
+        (acc: number, f: any, i: number) => acc + Math.min(10, Math.max(0, f.score)) * WEIGHTS[i], 0
+      );
+      analysis.stone_score = Math.round(stone * 100) / 100;
+      const s = analysis.stone_score;
+      analysis.stone_band = s>=8 ? 'STRONG YES' : s>=6.5 ? 'BUY' : s>=5 ? 'WATCH' : s>=3 ? 'PASS' : 'REJECT';
+      // PINK affects stone score (higher PINK = lower stone)
+      if (analysis.pink?.score > 200) {
+        analysis.stone_score = Math.max(0, analysis.stone_score - 0.5);
+        analysis.stone_score = Math.round(analysis.stone_score * 100) / 100;
+      }
     }
 
-    const s = analysis.stone_score;
-    analysis.stone_band = s>=8 ? 'STRONG YES' : s>=6.5 ? 'BUY' : s>=5 ? 'WATCH' : s>=3 ? 'PASS' : 'REJECT';
+    // ── VOLTS = completeness of teardown (all 5 layers present)
+    const layerKeys = ['L1_anatomy','L2_mechanics','L3_swot','L4_reality_lens','L5_blueprint'];
+    const layerCount = layerKeys.filter(k => analysis.layers?.[k]).length;
+    analysis.volts_earned = Math.max(1, layerCount);
 
     res.json({
       success: true,
       analysis,
       meta: {
-        engine: 'factorizer',
+        engine: 'factorizer-v2.0',
         model: MODEL,
         provider: 'openrouter',
+        pink_computed: true,
+        stone_computed: true,
         latency_ms: latencyMs,
-        prompt_tokens: orData.usage?.prompt_tokens || 0,
-        completion_tokens: orData.usage?.completion_tokens || 0,
+        prompt_tokens:      orData.usage?.prompt_tokens || 0,
+        completion_tokens:  orData.usage?.completion_tokens || 0,
         timestamp: new Date().toISOString(),
-        query: query || file?.originalFilename || ''
+        subject
       }
     });
 
