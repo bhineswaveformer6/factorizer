@@ -1,288 +1,526 @@
-import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useState, useCallback } from "react";
+import { Link } from "wouter";
+import { ArrowRight, Upload, Zap, Eye, Shield, Target, Globe, Cpu } from "lucide-react";
+import WaitlistCapture from "@/components/WaitlistCapture";
 
-// CORTEXCHAIN LANDING — Product Intelligence Infrastructure
-// Block #25 + #26 doctrine: The Castle Comes First
-// Three-lane: SPARK (free) → SURGE ($20) → SOVEREIGN ($79)
-// The One Question on the wall: "What does CortexChain know — that nobody
-// else knows — that makes a buyer's decision materially better?"
+const GOLD  = "#d4af5a";
+const CYAN  = "#22d4d4";
+const RED   = "#f87171";
+const GRN   = "#34d399";
+const NAVY  = "#06080f";
+const font  = "'Courier New', monospace";
+const serif = "Georgia, serif";
 
-const DEMO = {
-  subject: "Apple AirPods Pro 2",
-  verdict: "ACQUIRE",
-  pink: { score: 7.2, node: "H2 custom SiP — single-source, no substitution path" },
-  volt: { score: 8.4, signal: "40+ active patents · ANC algorithm defensible 6+ yrs" },
-  moat: { score: 6.1, label: "Switching Costs + Brand · switching_costs: 8/10" },
-  cogs: "$41", retail: "$249", margin: 83,
-  brief: "AirPods Pro 2 generates 83% gross margin on a $41 BOM. The real moat is the H2 SiP and ecosystem lock-in. To compete requires a custom silicon program ($30M+) or a platform differentiation strategy. PINK: single-source risk on TSMC 4nm is the kill switch.",
+// ── Demo teardown: Ring Doorbell (from blog post content)
+const DEMO_TEARDOWN = {
+  subject: "Ring Video Doorbell Pro",
+  system_type: "hardware",
+  one_line: "A $22 component stack sold for $229 — the hardware is the hook; the subscription is the business.",
+  intelligence_brief: {
+    what_it_is: "A battery or wired smart doorbell with HD video, two-way audio, motion detection, and cloud recording.",
+    what_it_does: "Converts physical proximity events into push notifications, video clips, and home security alerts — then upsells cloud storage subscriptions.",
+    how_it_works: "PIR sensor triggers image capture. SoC processes video, compresses it, and pushes to AWS via Wi-Fi. Companion app notifies owner. All analytics run cloud-side; the device is a sensor node.",
+    where_it_fails: [
+      { mode: "Wi-Fi dependency failure", probability: 7, severity: 9 },
+      { mode: "Cloud outage — no local fallback", probability: 5, severity: 10 },
+      { mode: "PIR false-positive rate at high heat", probability: 6, severity: 4 },
+    ],
+    what_to_watch: [
+      "AWS us-east-1 latency spikes → 3× increase in missed event notifications",
+      "PIR trigger rate >40/day → motion sensitivity calibration drift",
+      "App store rating drops below 3.8 → subscription churn leading indicator",
+    ],
+  },
+  pink: {
+    critical_node: "Cloud Dependency / AWS Backend",
+    score: 420,
+    band: "CRITICAL",
+    components: [
+      { name: "Cloud Dependency / AWS Backend", p: 5, i: 10, n: 9, k: 7, pink: 420 },
+      { name: "Wi-Fi Module (2.4GHz only)", p: 7, i: 9, n: 6, k: 4, pink: 378 },
+      { name: "SoC / MCU (ESP32-class)", p: 3, i: 8, n: 8, k: 5, pink: 192 },
+      { name: "PIR Motion Sensor", p: 6, i: 4, n: 3, k: 3, pink: 72 },
+      { name: "LiPo Battery (battery models)", p: 4, i: 6, n: 2, k: 4, pink: 68 },
+    ],
+  },
+  layers: {
+    L1_anatomy: {
+      components: [
+        { name: "ESP32-class SoC", role: "Core compute — firmware, video encode, network", layer_type: "SILICON", cost_est: "$3.50" },
+        { name: "1080p CMOS Image Sensor", role: "Video capture", layer_type: "IO_SENSOR", cost_est: "$4.00" },
+        { name: "Wi-Fi 2.4GHz Module", role: "AWS push, app sync", layer_type: "SILICON", cost_est: "$2.00" },
+        { name: "PIR Motion Sensor", role: "Proximity trigger — event initiation", layer_type: "IO_SENSOR", cost_est: "$0.50" },
+        { name: "AWS Cloud Backend", role: "Video storage, push notifications, analytics", layer_type: "SOFTWARE", cost_est: "$0 upfront / $5–20/mo subscription" },
+      ],
+      total_bom_est: "~$22 component cost vs $229 MSRP",
+      complexity_score: 5,
+    },
+    L4_reality_lens: {
+      buyer_profile: "Homeowners 30–55, Amazon Prime subscribers, motivated by package theft anxiety",
+      purchase_trigger: "Porch piracy incident or neighbor recommendation",
+      growth_vector: "Ring Protect subscription penetration — from free to $9.99/mo converts $229 sale into $800+ LTV",
+      moat_analysis: "Ecosystem lock-in (Neighbors app + Alexa + video history) not hardware. Moat is data and habit.",
+      trajectory: "STABLE",
+      trajectory_reason: "Market leader in US but margin compression from Eufy (no-sub competitors) and Google Nest AI features.",
+    },
+  },
+  stone_score: 7.2,
+  stone_band: "BUY",
+  volts_earned: 3,
 };
 
-const LANES = [
-  { id:"spark", name:"SPARK", price:"Free", period:"", volts:"3 analyses", badge:null, style:"outline", cta:"Start Free",
-    features:["Factorizer Engine","Reality Lens","PINK + VOLT + MOAT","PDF export"] },
-  { id:"surge", name:"SURGE", price:"$20", period:"/mo", volts:"20 analyses/mo", badge:"Most Popular", style:"cyan", cta:"Start Surge",
-    features:["Everything in SPARK","Intelligence Ledger","Compare mode","Team sharing"] },
-  { id:"sovereign", name:"SOVEREIGN", price:"$79", period:"/mo", volts:"100 analyses/mo", badge:"For Investors", style:"gold", cta:"Request Access",
-    features:["Everything in SURGE","Deal Room PDF format","API access","ARCHON Ψ cert"] },
-];
+/* ── PINK Gauge SVG ── */
+function PINKGauge({ score, band, criticalNode }: { score: number; band: string; criticalNode: string }) {
+  const max = 500;
+  const pct = Math.min(score / max, 1);
+  const color = band === "CRITICAL" ? RED : band === "HIGH" ? "#f59e0b" : band === "MEDIUM" ? GOLD : GRN;
+  const r = 54, cx = 64, cy = 64;
+  const arc = 2 * Math.PI * r;
+  const dashOffset = arc * (1 - pct);
 
-const STEPS = [
-  { n:"01", t:"Point", d:"Type any product, company, or technology. Upload a photo. No setup required." },
-  { n:"02", t:"X-Ray", d:"NVIDIA NIM runs the 5-layer factorization — anatomy, process, economics, ecosystem, verdict — in 60 seconds." },
-  { n:"03", t:"Decide", d:"Walk into any meeting with a PINK risk score, VOLT novelty rating, and a decision brief written for your deal room." },
-];
-
-const C = {
-  bg:"#050a14", card:"rgba(255,255,255,0.03)", border:"rgba(255,255,255,0.08)",
-  cyan:"#00d4ff", gold:"#f59e0b", red:"#ef4444", green:"#10b981",
-  text:"#f8fafc", muted:"rgba(255,255,255,0.45)", subtle:"rgba(255,255,255,0.15)",
-};
-
-function Bar({ score, max=10, color }: any) {
   return (
-    <div style={{ height:3, background:"rgba(255,255,255,0.06)", borderRadius:2, overflow:"hidden" }}>
-      <div style={{ height:"100%", width:`${(score/max)*100}%`, background:color, borderRadius:2 }} />
+    <div style={{ textAlign: "center" }}>
+      <svg width="128" height="128" viewBox="0 0 128 128">
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#1e293b" strokeWidth="10" />
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="10"
+          strokeDasharray={arc} strokeDashoffset={dashOffset}
+          strokeLinecap="round" transform={`rotate(-90 ${cx} ${cy})`}
+          style={{ transition: "stroke-dashoffset 1.2s ease" }} />
+        <text x={cx} y={cy - 6} textAnchor="middle" fill={color}
+          style={{ fontFamily: font, fontSize: 22, fontWeight: 700 }}>{score}</text>
+        <text x={cx} y={cy + 12} textAnchor="middle" fill="#64748b"
+          style={{ fontFamily: font, fontSize: 9 }}>PINK</text>
+        <text x={cx} y={cy + 24} textAnchor="middle" fill={color}
+          style={{ fontFamily: font, fontSize: 8 }}>{band}</text>
+      </svg>
+      <div style={{ fontFamily: font, fontSize: 10, color: "#64748b", marginTop: 4 }}>CRITICAL NODE</div>
+      <div style={{ fontFamily: font, fontSize: 11, color: RED, fontWeight: 700 }}>{criticalNode}</div>
     </div>
   );
 }
 
-function ScoreCard({ label, score, color, sub }: any) {
-  return (
-    <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:8, padding:"16px 18px", flex:1, minWidth:200 }}>
-      <div style={{ fontSize:10, letterSpacing:"0.2em", color:C.muted, textTransform:"uppercase", marginBottom:8 }}>{label}</div>
-      <div style={{ display:"flex", alignItems:"baseline", gap:4, marginBottom:8 }}>
-        <span style={{ fontSize:30, fontWeight:700, color, fontFamily:"monospace" }}>{score}</span>
-        <span style={{ fontSize:13, color:C.subtle }}>/10</span>
-      </div>
-      <Bar score={score} color={color} />
-      <div style={{ fontSize:11, color:C.muted, marginTop:8, lineHeight:1.4 }}>{sub}</div>
-    </div>
-  );
-}
-
-export default function Landing() {
-  const [, navigate] = useLocation();
+/* ── Discovery Widget ── */
+function DiscoveryWidget() {
   const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<typeof DEMO_TEARDOWN | null>(null);
+  const [gated, setGated] = useState(false);
 
-  const go = () => {
-    if (query.trim()) navigate(`/reality-lens?q=${encodeURIComponent(query.trim())}`);
-    else navigate("/reality-lens");
+  const runDemo = () => {
+    setLoading(true);
+    setTimeout(() => {
+      setResult(DEMO_TEARDOWN);
+      setGated(true);
+      setLoading(false);
+    }, 1800);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!query.trim()) return;
+    runDemo(); // In production: call /api/factorize with layer=anatomy only
   };
 
   return (
-    <div style={{ minHeight:"100vh", background:C.bg, color:C.text, fontFamily:"'Inter',system-ui,sans-serif", overflowX:"hidden" }}>
-      <style>{`
-        @keyframes scan { 0%{top:-1px;opacity:0} 10%{opacity:1} 90%{opacity:1} 100%{top:100%;opacity:0} }
-        @keyframes up { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
-        *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
-        input::placeholder{color:rgba(255,255,255,0.2)}
-        button:hover{opacity:0.85;transition:opacity 0.15s}
-      `}</style>
-
-      {/* Scan line */}
-      <div style={{ position:"fixed", inset:0, overflow:"hidden", pointerEvents:"none", zIndex:0 }}>
-        <div style={{ position:"absolute", left:0, right:0, height:1, background:`linear-gradient(90deg,transparent,rgba(0,212,255,0.3),transparent)`, animation:"scan 7s linear infinite" }} />
+    <div style={{
+      background: "rgba(255,255,255,0.02)", border: "1px solid rgba(212,175,90,0.2)",
+      borderRadius: 16, padding: "28px 32px", maxWidth: 680, margin: "0 auto",
+    }}>
+      <div style={{ fontFamily: font, fontSize: 10, color: GOLD, letterSpacing: "0.15em", marginBottom: 12 }}>
+        ⬡ DISCOVERY WIDGET · LAYER 1 FREE · 10 SECONDS
       </div>
+      <form onSubmit={handleSubmit} style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="DeepEX, Apple Vision Pro, Ring Doorbell, NVIDIA H100..."
+          style={{
+            flex: 1, padding: "12px 16px", borderRadius: 10,
+            background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
+            color: "#e2e8f0", fontSize: 14, fontFamily: "inherit",
+            outline: "none",
+          }}
+        />
+        <button type="submit" disabled={loading}
+          style={{
+            padding: "12px 20px", borderRadius: 10, fontFamily: font, fontSize: 12,
+            fontWeight: 700, background: GOLD, color: "#000", border: "none",
+            cursor: loading ? "wait" : "pointer", whiteSpace: "nowrap",
+            opacity: loading ? 0.7 : 1,
+          }}>
+          {loading ? "X-RAYING..." : "X-RAY IT →"}
+        </button>
+      </form>
 
-      {/* NAV */}
-      <nav style={{ position:"fixed", top:0, left:0, right:0, zIndex:100, height:58, borderBottom:`1px solid ${C.border}`, background:"rgba(5,10,20,0.93)", backdropFilter:"blur(16px)", display:"flex", alignItems:"center" }}>
-        <div style={{ maxWidth:1160, margin:"0 auto", padding:"0 24px", display:"flex", alignItems:"center", justifyContent:"space-between", width:"100%" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:9 }}>
-            <div style={{ width:28, height:28, background:`linear-gradient(135deg,${C.cyan},${C.gold})`, borderRadius:6, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:900, color:"#000" }}>C</div>
-            <span style={{ fontSize:14, fontWeight:800, letterSpacing:"0.06em" }}>CortexChain</span>
-            <span style={{ fontSize:10, color:C.muted, letterSpacing:"0.16em", textTransform:"uppercase" }}>Intelligence</span>
+      {!result && !loading && (
+        <button onClick={runDemo}
+          style={{ fontFamily: font, fontSize: 11, color: "#475569", background: "none", border: "none", cursor: "pointer" }}>
+          → Try Ring Doorbell Pro (demo)
+        </button>
+      )}
+
+      {loading && (
+        <div style={{ textAlign: "center", padding: "24px 0" }}>
+          <div style={{ fontFamily: font, fontSize: 12, color: GOLD }}>
+            ⬡ Identifying components...
           </div>
-          <div style={{ display:"flex", gap:8 }}>
-            <button onClick={() => navigate("/analyze")} style={{ padding:"7px 14px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:6, color:C.muted, fontSize:12, cursor:"pointer" }}>Factorizer</button>
-            <button onClick={() => navigate("/reality-lens")} style={{ padding:"7px 14px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:6, color:C.muted, fontSize:12, cursor:"pointer" }}>Reality Lens</button>
-            <button onClick={() => navigate("/reality-lens")} style={{ padding:"7px 20px", background:C.cyan, border:"none", borderRadius:6, color:"#000", fontSize:12, fontWeight:700, cursor:"pointer" }}>Start Free</button>
+          <div style={{ fontFamily: font, fontSize: 10, color: "#475569", marginTop: 8 }}>
+            LAYER 1 — ANATOMY · FREE
           </div>
+        </div>
+      )}
+
+      {result && (
+        <div>
+          {/* Subject + one line */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontFamily: serif, fontSize: 18, fontWeight: 700, color: "#e2e8f0", marginBottom: 4 }}>
+              {result.subject}
+            </div>
+            <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.6 }}>{result.one_line}</div>
+          </div>
+
+          {/* Intelligence Brief — free fields */}
+          <div style={{
+            background: "rgba(255,255,255,0.02)", borderRadius: 10,
+            border: "1px solid rgba(255,255,255,0.06)", padding: "16px 18px", marginBottom: 16,
+          }}>
+            <div style={{ fontFamily: font, fontSize: 9, color: "#475569", marginBottom: 10, letterSpacing: "0.12em" }}>
+              INTELLIGENCE BRIEF · LAYER 1 ANATOMY (FREE)
+            </div>
+            {[
+              ["WHAT IT IS", result.intelligence_brief.what_it_is],
+              ["WHAT IT DOES", result.intelligence_brief.what_it_does],
+              ["HOW IT WORKS", result.intelligence_brief.how_it_works],
+            ].map(([label, val]) => (
+              <div key={label} style={{ marginBottom: 10 }}>
+                <div style={{ fontFamily: font, fontSize: 9, color: GOLD, marginBottom: 3 }}>{label}</div>
+                <div style={{ fontSize: 12, color: "#cbd5e1", lineHeight: 1.6 }}>{val}</div>
+              </div>
+            ))}
+
+            {/* Gated fields */}
+            <div style={{ position: "relative" }}>
+              {[
+                ["WHERE IT FAILS", "Failure modes ranked by probability × severity"],
+                ["WHAT TO WATCH", "3 early warning signals before failure occurs"],
+              ].map(([label, hint]) => (
+                <div key={label} style={{ marginBottom: 10, filter: "blur(4px)", userSelect: "none", pointerEvents: "none" }}>
+                  <div style={{ fontFamily: font, fontSize: 9, color: RED, marginBottom: 3 }}>{label}</div>
+                  <div style={{ fontSize: 12, color: "#94a3b8" }}>{hint} · {hint} · {hint}</div>
+                </div>
+              ))}
+              <div style={{
+                position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                background: "rgba(6,8,15,0.7)", borderRadius: 8, flexDirection: "column", gap: 8,
+              }}>
+                <div style={{ fontFamily: font, fontSize: 10, color: RED }}>⚠ CRITICAL NODE DETECTED</div>
+                <div style={{ fontFamily: font, fontSize: 9, color: "#64748b" }}>
+                  WHERE IT FAILS + WHAT TO WATCH + PINK Score → unlock with free account
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* PINK teaser */}
+          <div style={{
+            display: "flex", gap: 16, alignItems: "center",
+            background: "rgba(248,113,113,0.06)", border: "1px solid rgba(248,113,113,0.2)",
+            borderRadius: 10, padding: "14px 18px", marginBottom: 16,
+          }}>
+            <div style={{ filter: "blur(6px)", pointerEvents: "none" }}>
+              <PINKGauge score={result.pink.score} band={result.pink.band} criticalNode={result.pink.critical_node} />
+            </div>
+            <div>
+              <div style={{ fontFamily: font, fontSize: 10, color: RED, marginBottom: 6 }}>
+                🔴 CRITICAL NODE IDENTIFIED
+              </div>
+              <div style={{ fontFamily: font, fontSize: 11, color: "#64748b", lineHeight: 1.7 }}>
+                PINK Score + Critical Node analysis<br/>
+                WHERE IT FAILS · WHAT TO WATCH<br/>
+                Layers 2–5: Mechanics, SWOT, Reality Lens, Blueprint<br/>
+                <span style={{ color: RED }}>→ requires free account</span>
+              </div>
+            </div>
+          </div>
+
+          {/* CTA */}
+          <div style={{ display: "flex", gap: 10 }}>
+            <Link href="/analyze">
+              <button style={{
+                flex: 1, padding: "13px 0", borderRadius: 10, fontFamily: font, fontSize: 12,
+                fontWeight: 700, background: GOLD, color: "#000", border: "none", cursor: "pointer",
+              }}>
+                UNLOCK FULL X-RAY →
+              </button>
+            </Link>
+            <Link href="/reality-lens">
+              <button style={{
+                padding: "13px 20px", borderRadius: 10, fontFamily: font, fontSize: 12,
+                background: "none", color: CYAN, border: `1px solid ${CYAN}40`, cursor: "pointer",
+              }}>
+                REALITY LENS
+              </button>
+            </Link>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Main Landing Page ── */
+export default function LandingPage() {
+  return (
+    <div style={{ background: NAVY, minHeight: "100vh", color: "#e2e8f0" }}>
+
+      {/* ── NAV ── */}
+      <nav style={{
+        position: "sticky", top: 0, zIndex: 50,
+        background: `${NAVY}f0`, backdropFilter: "blur(12px)",
+        borderBottom: "1px solid rgba(255,255,255,0.04)",
+        padding: "0 32px", height: 56,
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+      }}>
+        <div style={{ fontFamily: font, fontSize: 14, fontWeight: 700, color: GOLD, letterSpacing: "0.1em" }}>
+          ⬡ FACTORIZER
+        </div>
+        <div style={{ display: "flex", gap: 20, alignItems: "center" }}>
+          {[
+            { label: "Analyze", href: "/analyze" },
+            { label: "Reality Lens", href: "/reality-lens" },
+          ].map(({ label, href }) => (
+            <Link key={label} href={href}>
+              <span style={{ fontFamily: font, fontSize: 11, color: "#64748b", cursor: "pointer",
+                letterSpacing: "0.08em" }}>{label}</span>
+            </Link>
+          ))}
+          <Link href="/analyze">
+            <button style={{
+              fontFamily: font, fontSize: 11, padding: "7px 16px", borderRadius: 8,
+              background: GOLD, color: "#000", border: "none", cursor: "pointer", fontWeight: 700,
+            }}>
+              X-RAY ANYTHING →
+            </button>
+          </Link>
         </div>
       </nav>
 
-      {/* HERO */}
-      <section style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:"100px 24px 80px", position:"relative" }}>
-        <div style={{ position:"absolute", inset:0, backgroundImage:"radial-gradient(circle,rgba(0,212,255,0.05) 1px,transparent 1px)", backgroundSize:"32px 32px", pointerEvents:"none", zIndex:1 }} />
-        <div style={{ position:"absolute", top:"25%", left:"50%", transform:"translateX(-50%)", width:800, height:400, background:`radial-gradient(ellipse,rgba(0,212,255,0.05) 0%,transparent 70%)`, pointerEvents:"none", zIndex:1 }} />
-
-        <div style={{ position:"relative", zIndex:2, textAlign:"center", maxWidth:820, animation:"up 0.9s ease both" }}>
-          {/* Badge */}
-          <div style={{ display:"inline-flex", alignItems:"center", gap:8, padding:"5px 14px", background:"rgba(0,212,255,0.07)", border:`1px solid rgba(0,212,255,0.2)`, borderRadius:100, marginBottom:36, fontSize:10, letterSpacing:"0.18em", textTransform:"uppercase", color:C.cyan }}>
-            <div style={{ width:6, height:6, borderRadius:"50%", background:C.cyan, animation:"blink 2s infinite" }} />
-            NVIDIA Inception · ARCHON Ψ Standard · 19 Patents Pending
-          </div>
-
-          <h1 style={{ fontSize:"clamp(38px,6.5vw,74px)", fontWeight:900, lineHeight:1.02, marginBottom:22, letterSpacing:"-0.04em" }}>
-            X-ray any product<br />
-            <span style={{ background:`linear-gradient(120deg,${C.cyan} 30%,${C.gold})`, WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>before you invest in it</span>
-          </h1>
-
-          <p style={{ fontSize:"clamp(15px,2vw,19px)", color:C.muted, lineHeight:1.65, margin:"0 auto 44px", maxWidth:600 }}>
-            The only system that surfaces the Critical Node of any product — the single point most likely to destroy your investment thesis — before a dollar of capital is committed.
-          </p>
-
-          <div style={{ display:"flex", gap:8, maxWidth:600, margin:"0 auto 12px" }}>
-            <input
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && go()}
-              placeholder="Apple Vision Pro, Neuralink, Waymo, Tesla FSD..."
-              style={{ flex:1, padding:"16px 20px", background:"rgba(255,255,255,0.05)", border:`1px solid rgba(0,212,255,0.28)`, borderRadius:8, color:C.text, fontSize:15, outline:"none", fontFamily:"inherit" }}
-            />
-            <button onClick={go} style={{ padding:"16px 28px", background:C.cyan, border:"none", borderRadius:8, color:"#000", fontSize:14, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap" }}>
-              Run Analysis →
-            </button>
-          </div>
-
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:16, fontSize:12, color:C.subtle }}>
-            <button onClick={() => navigate("/analyze")} style={{ background:"none", border:"none", color:C.subtle, cursor:"pointer", fontSize:12, textDecoration:"underline" }}>Upload photo instead</button>
-            <span>·</span>
-            <span>3 free analyses. No credit card.</span>
-          </div>
+      {/* ── HERO ── */}
+      <section style={{ padding: "80px 32px 60px", textAlign: "center", maxWidth: 900, margin: "0 auto" }}>
+        <div style={{
+          display: "inline-flex", alignItems: "center", gap: 8,
+          padding: "6px 16px", borderRadius: 24,
+          border: `1px solid ${GOLD}30`, background: `${GOLD}08`, marginBottom: 32,
+        }}>
+          <span style={{ fontFamily: font, fontSize: 10, color: GOLD, letterSpacing: "0.15em" }}>
+            UNIVERSAL SYSTEM COMPREHENSION ENGINE
+          </span>
         </div>
+
+        <h1 style={{
+          fontFamily: serif, fontSize: "clamp(36px, 5vw, 62px)", fontWeight: 700,
+          lineHeight: 1.15, marginBottom: 20, color: "#f1f5f9",
+        }}>
+          Point it at anything.<br />
+          <span style={{ color: GOLD }}>Get the X-ray.</span>
+        </h1>
+
+        <p style={{
+          fontSize: 17, color: "#94a3b8", lineHeight: 1.7, maxWidth: 600, margin: "0 auto 16px",
+        }}>
+          Factorizer tears down any product, system, or technology — hardware, software, infrastructure, geotechnical — into five layers of truth.
+          Anatomy → Mechanics → SWOT → Reality Lens → Blueprint.
+        </p>
+
+        <p style={{ fontFamily: font, fontSize: 12, color: "#475569", marginBottom: 48 }}>
+          The PINK metric surfaces the single component most likely to kill the system.
+        </p>
+
+        {/* ── DISCOVERY WIDGET ── */}
+        <DiscoveryWidget />
       </section>
 
-      {/* LIVE OUTPUT DEMO */}
-      <section style={{ padding:"80px 24px", maxWidth:1100, margin:"0 auto" }}>
-        <div style={{ textAlign:"center", marginBottom:48 }}>
-          <div style={{ fontSize:11, letterSpacing:"0.25em", textTransform:"uppercase", color:C.cyan, marginBottom:12 }}>Live Output · Sample Analysis</div>
-          <h2 style={{ fontSize:"clamp(24px,3.5vw,40px)", fontWeight:800, letterSpacing:"-0.025em" }}>60 seconds. One decision.</h2>
-          <p style={{ color:C.muted, marginTop:10, fontSize:14 }}>Apple AirPods Pro 2 — actual report structure</p>
-        </div>
-
-        <div style={{ display:"flex", gap:16, marginBottom:20, flexWrap:"wrap" }}>
-          <ScoreCard label="PINK — Critical Risk" score={DEMO.pink.score} color={C.red} sub={DEMO.pink.node} />
-          <ScoreCard label="VOLT — IP Novelty" score={DEMO.volt.score} color={C.cyan} sub={DEMO.volt.signal} />
-          <ScoreCard label="MOAT — Defensibility" score={DEMO.moat.score} color={C.gold} sub={DEMO.moat.label} />
-        </div>
-
-        <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:8, padding:24, marginBottom:24 }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14, flexWrap:"wrap", gap:10 }}>
-            <span style={{ fontSize:10, letterSpacing:"0.2em", textTransform:"uppercase", color:C.gold }}>PM Decision Brief</span>
-            <span style={{ padding:"4px 12px", background:"rgba(16,185,129,0.1)", border:`1px solid rgba(16,185,129,0.25)`, borderRadius:100, fontSize:10, color:C.green, letterSpacing:"0.12em" }}>VERDICT: {DEMO.verdict}</span>
+      {/* ── 5 LAYERS ── */}
+      <section style={{ padding: "60px 32px", maxWidth: 960, margin: "0 auto" }}>
+        <div style={{ textAlign: "center", marginBottom: 40 }}>
+          <div style={{ fontFamily: font, fontSize: 10, color: "#475569", letterSpacing: "0.15em", marginBottom: 12 }}>
+            THE FIVE-LAYER TEARDOWN ENGINE
           </div>
-          <p style={{ color:C.muted, fontSize:14, lineHeight:1.75, marginBottom:18 }}>{DEMO.brief}</p>
-          <div style={{ display:"flex", gap:32, flexWrap:"wrap" }}>
-            {[["COGS",DEMO.cogs,C.text],["Retail",DEMO.retail,C.text],["Gross Margin",`${DEMO.margin}%`,C.green]].map(([l,v,col]) => (
-              <div key={l as string}>
-                <div style={{ fontSize:10, letterSpacing:"0.15em", color:C.subtle, textTransform:"uppercase", marginBottom:3 }}>{l}</div>
-                <div style={{ fontSize:22, fontWeight:800, fontFamily:"monospace", color:col as string }}>{v}</div>
-              </div>
-            ))}
-          </div>
+          <h2 style={{ fontFamily: serif, fontSize: 28, fontWeight: 700, color: "#f1f5f9" }}>
+            Every session runs deeper than the last
+          </h2>
         </div>
-
-        <div style={{ textAlign:"center" }}>
-          <button onClick={() => navigate("/reality-lens")} style={{ padding:"12px 32px", background:"transparent", border:`1px solid rgba(0,212,255,0.35)`, borderRadius:8, color:C.cyan, fontSize:13, cursor:"pointer" }}>
-            Run a real analysis →
-          </button>
-        </div>
-      </section>
-
-      {/* HOW IT WORKS */}
-      <section style={{ padding:"80px 24px", borderTop:`1px solid ${C.border}` }}>
-        <div style={{ maxWidth:960, margin:"0 auto" }}>
-          <div style={{ textAlign:"center", marginBottom:52 }}>
-            <div style={{ fontSize:11, letterSpacing:"0.25em", textTransform:"uppercase", color:C.cyan, marginBottom:10 }}>Protocol</div>
-            <h2 style={{ fontSize:"clamp(24px,3.5vw,40px)", fontWeight:800, letterSpacing:"-0.025em" }}>Three steps. One better decision.</h2>
-          </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))", gap:20 }}>
-            {STEPS.map(s => (
-              <div key={s.n} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:8, padding:28 }}>
-                <div style={{ fontSize:11, letterSpacing:"0.2em", color:C.cyan, marginBottom:14, fontFamily:"monospace" }}>{s.n}</div>
-                <h3 style={{ fontSize:20, fontWeight:700, marginBottom:12 }}>{s.t}</h3>
-                <p style={{ color:C.muted, fontSize:14, lineHeight:1.7 }}>{s.d}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* THREE-LANE PRICING */}
-      <section style={{ padding:"80px 24px", borderTop:`1px solid ${C.border}` }}>
-        <div style={{ maxWidth:960, margin:"0 auto" }}>
-          <div style={{ textAlign:"center", marginBottom:52 }}>
-            <div style={{ fontSize:11, letterSpacing:"0.25em", textTransform:"uppercase", color:C.cyan, marginBottom:10 }}>Pricing</div>
-            <h2 style={{ fontSize:"clamp(24px,3.5vw,40px)", fontWeight:800, letterSpacing:"-0.025em" }}>One engine. Three lanes.</h2>
-            <p style={{ color:C.muted, marginTop:10, fontSize:14 }}>Same X-ray. Different depth. Different deal size.</p>
-          </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))", gap:20 }}>
-            {LANES.map(lane => (
-              <div key={lane.id} style={{ position:"relative", background:lane.style==="cyan"?"rgba(0,212,255,0.04)":C.card, border:`1px solid ${lane.style==="cyan"?"rgba(0,212,255,0.28)":lane.style==="gold"?"rgba(245,158,11,0.28)":C.border}`, borderRadius:10, padding:28 }}>
-                {lane.badge && (
-                  <div style={{ position:"absolute", top:-12, left:"50%", transform:"translateX(-50%)", padding:"3px 14px", background:lane.style==="cyan"?C.cyan:C.gold, borderRadius:100, fontSize:10, fontWeight:700, color:"#000", letterSpacing:"0.1em", textTransform:"uppercase", whiteSpace:"nowrap" }}>
-                    {lane.badge}
-                  </div>
-                )}
-                <div style={{ marginBottom:20 }}>
-                  <div style={{ fontSize:11, letterSpacing:"0.2em", textTransform:"uppercase", color:C.muted, marginBottom:8 }}>{lane.name}</div>
-                  <div style={{ display:"flex", alignItems:"baseline", gap:2, marginBottom:4 }}>
-                    <span style={{ fontSize:38, fontWeight:900, fontFamily:"monospace" }}>{lane.price}</span>
-                    <span style={{ fontSize:14, color:C.muted }}>{lane.period}</span>
-                  </div>
-                  <div style={{ fontSize:12, color:C.cyan }}>{lane.volts}</div>
-                  <div style={{ fontSize:12, color:C.muted, marginTop:4 }}>{ lane.id==="spark"?"Run your first X-ray":lane.id==="surge"?"For strategy teams":"Deal room grade"}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+          {[
+            { num: "L1", label: "Anatomy", desc: "Components, modules, integrations. Delivered free in 10 seconds — the discovery layer.", color: "#a78bfa", icon: Cpu, free: true },
+            { num: "L2", label: "Mechanics", desc: "Data flow, energy paths, load paths. Rendered as an isometric X-ray schematic.", color: CYAN, icon: Eye },
+            { num: "L3", label: "SWOT & Competitive Intel", desc: "Deep competitive landscape. Who else does this? What is the gap?", color: GRN, icon: Target },
+            { num: "L4", label: "Reality Lens", desc: "Market simulation. Buyer profile, purchase trigger, growth vector, moat analysis.", color: GOLD, icon: Globe },
+            { num: "L5", label: "Blueprint", desc: "Full compiled intelligence report. PINK score + Critical Node + X-ray schematic. Shareable, exportable.", color: RED, icon: Shield },
+          ].map(({ num, label, desc, color, icon: Icon, free }) => (
+            <div key={num} style={{
+              background: "rgba(255,255,255,0.02)", border: `1px solid ${color}25`,
+              borderRadius: 12, padding: "20px 22px", position: "relative",
+            }}>
+              {free && (
+                <span style={{
+                  position: "absolute", top: 12, right: 12,
+                  fontFamily: font, fontSize: 9, color: GRN,
+                  background: `${GRN}15`, border: `1px solid ${GRN}30`,
+                  padding: "2px 8px", borderRadius: 4,
+                }}>FREE</span>
+              )}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: 8,
+                  background: `${color}15`, border: `1px solid ${color}30`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <Icon size={16} style={{ color }} />
                 </div>
-                <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:18, marginBottom:22 }}>
-                  {lane.features.map(f => (
-                    <div key={f} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:9 }}>
-                      <div style={{ width:14, height:14, borderRadius:"50%", background:"rgba(0,212,255,0.12)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:8, color:C.cyan }}>✓</div>
-                      <span style={{ fontSize:13, color:C.muted }}>{f}</span>
-                    </div>
-                  ))}
-                </div>
-                <button
-                  onClick={() => navigate("/reality-lens")}
-                  style={{ width:"100%", padding:"13px", borderRadius:7, fontSize:13, fontWeight:700, cursor:"pointer", background:lane.style==="cyan"?C.cyan:lane.style==="gold"?C.gold:"transparent", border:lane.style==="outline"?`1px solid ${C.border}`:"none", color:lane.style==="outline"?C.text:"#000" }}
-                >
-                  {lane.cta}
-                </button>
+                <span style={{ fontFamily: font, fontSize: 10, color, letterSpacing: "0.1em" }}>{num}</span>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* TRUST STRIP */}
-      <section style={{ padding:"44px 24px", borderTop:`1px solid ${C.border}`, borderBottom:`1px solid ${C.border}` }}>
-        <div style={{ maxWidth:900, margin:"0 auto", display:"flex", alignItems:"center", justifyContent:"center", flexWrap:"wrap", gap:40 }}>
-          {[["NVIDIA","Inception Member"],["ARCHON Ψ","Judgment Standard"],["19 Patents","Pending"],["NIM Models","Nemotron · Phi-3.5V"],["CortexChain","Inc. · Waveform Tech"]].map(([l,s]) => (
-            <div key={l} style={{ textAlign:"center" }}>
-              <div style={{ fontSize:13, fontWeight:700, letterSpacing:"0.04em" }}>{l}</div>
-              <div style={{ fontSize:10, color:C.subtle, letterSpacing:"0.1em", textTransform:"uppercase", marginTop:2 }}>{s}</div>
+              <div style={{ fontFamily: serif, fontSize: 15, fontWeight: 600, color: "#f1f5f9", marginBottom: 6 }}>{label}</div>
+              <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.6 }}>{desc}</div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* FINAL CTA */}
-      <section style={{ padding:"100px 24px", textAlign:"center" }}>
-        <div style={{ maxWidth:600, margin:"0 auto" }}>
-          <h2 style={{ fontSize:"clamp(28px,4.5vw,52px)", fontWeight:900, marginBottom:20, letterSpacing:"-0.04em", lineHeight:1.05 }}>
-            What does your<br />
-            <span style={{ background:`linear-gradient(120deg,${C.cyan},${C.gold})`, WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>next $50M decision</span>
-            <br />look like with an X-ray?
-          </h2>
-          <p style={{ color:C.muted, fontSize:16, lineHeight:1.65, marginBottom:40 }}>
-            Three free analyses. No credit card. The same intelligence infrastructure Moody's wishes it had built for products.
-          </p>
-          <button onClick={() => navigate("/reality-lens")} style={{ padding:"18px 48px", background:C.cyan, border:"none", borderRadius:8, color:"#000", fontSize:16, fontWeight:900, cursor:"pointer", letterSpacing:"0.05em" }}>
-            Run Your First X-ray →
-          </button>
-          <div style={{ marginTop:14, fontSize:12, color:C.subtle }}>60 seconds. No setup. No card.</div>
+      {/* ── PINK METRIC ── */}
+      <section style={{
+        padding: "60px 32px", maxWidth: 800, margin: "0 auto",
+        borderTop: "1px solid rgba(255,255,255,0.04)",
+      }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 48, alignItems: "center" }}>
+          <div>
+            <div style={{ fontFamily: font, fontSize: 10, color: RED, letterSpacing: "0.15em", marginBottom: 12 }}>
+              THE PINK METRIC · PROPRIETARY IP
+            </div>
+            <h2 style={{ fontFamily: serif, fontSize: 26, fontWeight: 700, marginBottom: 16, lineHeight: 1.3 }}>
+              The single component most likely to <span style={{ color: RED }}>kill the system</span>
+            </h2>
+            <p style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.7, marginBottom: 20 }}>
+              PINK diverges from standard FMECA in two critical ways. The dependency multiplier (N) amplifies risk for highly connected nodes. The knowledge gap factor (K) penalizes opacity — an unknown failure mode scores higher than a well-understood one of equal severity.
+            </p>
+            <div style={{
+              fontFamily: font, fontSize: 13, color: GOLD, letterSpacing: "0.05em",
+              background: "rgba(212,175,90,0.08)", border: `1px solid ${GOLD}30`,
+              borderRadius: 8, padding: "12px 16px",
+            }}>
+              PINK = P × I × √(N × K)
+            </div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            <PINKGauge
+              score={DEMO_TEARDOWN.pink.score}
+              band={DEMO_TEARDOWN.pink.band}
+              criticalNode={DEMO_TEARDOWN.pink.critical_node}
+            />
+          </div>
         </div>
       </section>
 
-      {/* FOOTER */}
-      <footer style={{ padding:"28px 24px", borderTop:`1px solid ${C.border}` }}>
-        <div style={{ maxWidth:1160, margin:"0 auto", display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
-          <div style={{ fontSize:11, color:C.subtle }}>© 2026 CortexChain, Inc. · Waveform Tech LLC · ARCHON Ψ (Hines, B.) · Powered by NVIDIA NIM</div>
-          <div style={{ display:"flex", gap:20 }}>
-            {["Privacy","Terms","API Docs","Deal Room"].map(l => <span key={l} style={{ fontSize:11, color:C.subtle, cursor:"pointer" }}>{l}</span>)}
+      {/* ── INTELLIGENCE BRIEF FORMAT ── */}
+      <section style={{
+        padding: "60px 32px", maxWidth: 800, margin: "0 auto",
+        borderTop: "1px solid rgba(255,255,255,0.04)",
+      }}>
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <div style={{ fontFamily: font, fontSize: 10, color: "#475569", letterSpacing: "0.15em", marginBottom: 12 }}>
+            THE INTELLIGENCE BRIEF · LAYER 2 OUTPUT
           </div>
+          <h2 style={{ fontFamily: serif, fontSize: 26, fontWeight: 700 }}>
+            Structured like a military intelligence report
+          </h2>
+          <p style={{ fontSize: 13, color: "#64748b", marginTop: 8 }}>Not a manual. Not a dashboard. Five fixed fields, every time.</p>
         </div>
-      </footer>
+        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          {[
+            { num: "01", label: "WHAT IT IS", desc: "One sentence. No jargon. Canonical identity.", color: "#a78bfa" },
+            { num: "02", label: "WHAT IT DOES", desc: "The specific job it performs.", color: CYAN },
+            { num: "03", label: "HOW IT WORKS", desc: "Mechanics in plain language — the actual operating principle.", color: GRN },
+            { num: "04", label: "WHERE IT FAILS", desc: "Failure modes ranked by probability × severity.", color: RED, gated: true },
+            { num: "05", label: "WHAT TO WATCH", desc: "Three early warning signals before failure occurs.", color: RED, gated: true },
+          ].map(({ num, label, desc, color, gated }) => (
+            <div key={num} style={{
+              display: "flex", alignItems: "center", gap: 16, padding: "14px 18px",
+              background: gated ? "rgba(248,113,113,0.04)" : "rgba(255,255,255,0.02)",
+              border: `1px solid ${color}20`, borderRadius: 10,
+              opacity: gated ? 0.7 : 1,
+            }}>
+              <span style={{ fontFamily: font, fontSize: 10, color, minWidth: 24 }}>{num}</span>
+              <div style={{ flex: 1 }}>
+                <span style={{ fontFamily: font, fontSize: 11, color, marginRight: 12 }}>{label}</span>
+                <span style={{ fontSize: 12, color: "#64748b" }}>{desc}</span>
+              </div>
+              {gated && (
+                <span style={{ fontFamily: font, fontSize: 9, color: RED,
+                  background: `${RED}15`, border: `1px solid ${RED}30`,
+                  padding: "2px 8px", borderRadius: 4 }}>GATED</span>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── WHAT IT WORKS ON ── */}
+      <section style={{
+        padding: "60px 32px", maxWidth: 800, margin: "0 auto",
+        borderTop: "1px solid rgba(255,255,255,0.04)",
+        textAlign: "center",
+      }}>
+        <div style={{ fontFamily: font, fontSize: 10, color: "#475569", letterSpacing: "0.15em", marginBottom: 24 }}>
+          UNIVERSAL INPUT · ANY SYSTEM
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", marginBottom: 24 }}>
+          {[
+            "Software products", "Hardware devices", "AI models + agents",
+            "Physical infrastructure", "Industrial machinery",
+            "Geotechnical systems", "Biological systems", "Financial instruments",
+          ].map(tag => (
+            <span key={tag} style={{
+              fontFamily: font, fontSize: 10, padding: "6px 14px", borderRadius: 20,
+              background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+              color: "#94a3b8",
+            }}>{tag}</span>
+          ))}
+        </div>
+        <p style={{ fontSize: 13, color: "#64748b", maxWidth: 520, margin: "0 auto" }}>
+          Point Factorizer at anything. Text, URL, or photo. The X-ray works universally — from a Ring doorbell to a PLAXIS geotechnical FEM model.
+        </p>
+      </section>
+
+      {/* ── CTA ── */}
+      <section style={{ padding: "60px 32px 80px", textAlign: "center" }}>
+        <h2 style={{ fontFamily: serif, fontSize: 28, fontWeight: 700, marginBottom: 12 }}>
+          Start with the doorbell.
+        </h2>
+        <p style={{ fontSize: 14, color: "#64748b", marginBottom: 32 }}>
+          Layer 1 is free. Always. The X-ray starts in 10 seconds.
+        </p>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+          <Link href="/analyze">
+            <button style={{
+              padding: "14px 32px", borderRadius: 12, fontFamily: font, fontSize: 13,
+              fontWeight: 700, background: GOLD, color: "#000", border: "none", cursor: "pointer",
+            }}>
+              UPLOAD A PHOTO → GET THE BLUEPRINT
+            </button>
+          </Link>
+          <Link href="/reality-lens">
+            <button style={{
+              padding: "14px 24px", borderRadius: 12, fontFamily: font, fontSize: 13,
+              background: "none", color: CYAN, border: `1px solid ${CYAN}40`, cursor: "pointer",
+            }}>
+              REALITY LENS →
+            </button>
+          </Link>
+        </div>
+      </section>
+
+      <WaitlistCapture />
     </div>
   );
 }
