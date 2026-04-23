@@ -1,10 +1,10 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, FileText, Settings, CreditCard, Camera, Layers,
   Search, ChevronDown, ChevronRight, ArrowLeft, Menu, X,
   Target, Cpu, Factory, DollarSign, Globe, Shield, Zap, TrendingUp,
-  Users, Package, AlertTriangle, CheckCircle2, ArrowRight
+  Users, Package, AlertTriangle, CheckCircle2, ArrowRight, Info
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
@@ -15,6 +15,91 @@ import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 import WaitlistCapture from "@/components/WaitlistCapture";
 import ArchonGatewayPanel from "@/components/ArchonGatewayPanel";
 
+/* ─────── LAYER TYPE ENUM (Gap 9) ─────── */
+const LAYER_TYPES = {
+  SILICON:      { code: "L1", tag: "SILICON",      color: "#a78bfa" },
+  MECHANICAL:   { code: "L2", tag: "MECHANICAL",   color: "#60a5fa" },
+  IO_SENSOR:    { code: "L3", tag: "I/O · SENSOR", color: "#34d399" },
+  SOFTWARE:     { code: "L4", tag: "SOFTWARE · FW", color: "#fbbf24" },
+  SUPPLY_CHAIN: { code: "L5", tag: "SUPPLY CHAIN", color: "#f87171" },
+  PRICING:      { code: "L6", tag: "PRICING · ASP", color: "#d4af5a" },
+  MOAT:         { code: "L7", tag: "COMP. MOAT",   color: "#22d4d4" },
+} as const;
+
+/* ─────── AUDIT ENGINE (Gap 10) ─────── */
+type AuditGrade = "A" | "B" | "C" | "D";
+interface AuditResult {
+  grade: AuditGrade;
+  tier: string;
+  warnings: string[];
+  errors: string[];
+  coveragePct: number;
+  canSeal: boolean;
+  provenanceMode: "INFERENCE_ONLY" | "PARTIAL_PRIMARY" | "CANON_ELIGIBLE";
+}
+
+function auditTeardown(result: any, isDemo: boolean, matchConfidence: number): AuditResult {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+  let coverageScore = 0;
+
+  if (!result) return {
+    grade: "D", tier: "Tier 0 — No Data",
+    warnings: [], errors: ["No result loaded"],
+    coveragePct: 0, canSeal: false, provenanceMode: "INFERENCE_ONLY"
+  };
+
+  // Factor coverage
+  if (result.anatomy?.techStack?.length >= 3) coverageScore += 20;
+  else warnings.push("Anatomy: fewer than 3 tech components identified");
+
+  if (result.economics?.unitEconomics?.cogs) coverageScore += 20;
+  else warnings.push("Economics: COGS not grounded in primary sources");
+
+  if (result.ecosystem?.competitiveData?.length >= 2) coverageScore += 20;
+  else warnings.push("Ecosystem: competitive benchmarks incomplete");
+
+  if (result.process?.supplyChain?.length >= 2) coverageScore += 20;
+  else warnings.push("Process: supply chain dependencies not documented");
+
+  if (matchConfidence >= 0.75) coverageScore += 20;
+  else if (matchConfidence >= 0.50) { coverageScore += 10; warnings.push("Match confidence below 0.75 — results may use category priors"); }
+  else { errors.push("Match confidence < 0.50 — Discovery Mode: output uses generic category priors only"); }
+
+  if (isDemo) errors.push("Demo mode active — no real analysis was performed");
+
+  const grade: AuditGrade = coverageScore >= 90 ? "A"
+    : coverageScore >= 70 ? "B"
+    : coverageScore >= 50 ? "C" : "D";
+
+  const tier = grade === "A" ? "Tier 3 — Canon Eligible"
+    : grade === "B" ? "Tier 2 — Partial Primary Sources"
+    : grade === "C" ? "Tier 1 — Category Inference"
+    : "Tier 0 — Sandbox / Demo Only";
+
+  const provenanceMode = grade === "A" ? "CANON_ELIGIBLE"
+    : grade === "B" ? "PARTIAL_PRIMARY" : "INFERENCE_ONLY";
+
+  return {
+    grade, tier, warnings, errors,
+    coveragePct: coverageScore,
+    canSeal: grade === "A" && !isDemo && matchConfidence >= 0.80,
+    provenanceMode
+  };
+}
+
+/* ─────── COMPUTED SCORES (Gap 3 + 7) ─────── */
+function computeOmegaGap(stoneScore: number, categoryFrontier: number): number {
+  return Math.round(Math.abs(categoryFrontier - stoneScore) * 10) / 10;
+}
+
+function computeConfidenceFromCoverage(coveragePct: number, matchConf: number, primarySourceCount: number): number {
+  const coverageFactor = coveragePct / 100 * 0.40;
+  const matchFactor    = matchConf * 0.35;
+  const sourceFactor   = Math.min(primarySourceCount / 5, 1) * 0.25;
+  return Math.round((coverageFactor + matchFactor + sourceFactor) * 100) / 100;
+}
+
 /* ─────── Logo ─────── */
 function FactorizerLogo({ className = "h-7" }: { className?: string }) {
   return (
@@ -22,33 +107,255 @@ function FactorizerLogo({ className = "h-7" }: { className?: string }) {
       <rect x="2" y="4" width="24" height="24" rx="3" stroke="#BFA46A" strokeWidth="1.5" fill="none" />
       <path d="M9 10h10M9 16h7M9 22" stroke="#BFA46A" strokeWidth="2" strokeLinecap="round" />
       <line x1="9" y1="10" x2="9" y2="22" stroke="#BFA46A" strokeWidth="2" strokeLinecap="round" />
-      <text x="34" y="22" fontFamily="Inter, system-ui, sans-serif" fontSize="16" fontWeight="600" fill="#BFA46A" letterSpacing="0.05em">
-        FACTORIZER
-      </text>
+      <text x="34" y="22" fontFamily="Inter, system-ui, sans-serif" fontSize="16" fontWeight="600"
+        fill="#BFA46A" letterSpacing="0.05em">FACTORIZER</text>
     </svg>
   );
 }
 
-/* ─────── Mock Data: Apple AirPods Pro 2 ─────── */
+/* ─────── Audit Rail (Gap 10) ─────── */
+function AuditRail({ audit, computedConfidence }: { audit: AuditResult; computedConfidence: number }) {
+  const gradeColor = audit.grade === "A" ? "#34d399"
+    : audit.grade === "B" ? "#fbbf24"
+    : audit.grade === "C" ? "#f59e0b"
+    : "#f87171";
+
+  return (
+    <div style={{
+      background: audit.grade === "D" ? "rgba(248,113,113,0.08)" : "rgba(255,255,255,0.03)",
+      border: `1px solid ${gradeColor}33`,
+      borderLeft: `3px solid ${gradeColor}`,
+      borderRadius: 8,
+      padding: "10px 14px",
+      marginBottom: 16,
+      fontFamily: "'Courier New', monospace",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+        <span style={{ color: gradeColor, fontWeight: 700, fontSize: 13 }}>
+          ⚖ AUDIT GRADE: {audit.grade}
+        </span>
+        <span style={{ color: "#64748b", fontSize: 11 }}>·</span>
+        <span style={{ color: "#94a3b8", fontSize: 11 }}>{audit.tier}</span>
+        <span style={{ marginLeft: "auto", color: "#64748b", fontSize: 10 }}>
+          COVERAGE {audit.coveragePct}% · CONFIDENCE {(computedConfidence * 100).toFixed(0)}%
+        </span>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: audit.warnings.length > 0 ? 8 : 0 }}>
+        <span style={{
+          fontSize: 10, padding: "2px 8px", borderRadius: 4,
+          background: audit.provenanceMode === "CANON_ELIGIBLE" ? "#34d39920"
+            : audit.provenanceMode === "PARTIAL_PRIMARY" ? "#fbbf2420" : "#f8717120",
+          color: audit.provenanceMode === "CANON_ELIGIBLE" ? "#34d399"
+            : audit.provenanceMode === "PARTIAL_PRIMARY" ? "#fbbf24" : "#f87171",
+          border: `1px solid ${audit.provenanceMode === "CANON_ELIGIBLE" ? "#34d39940"
+            : audit.provenanceMode === "PARTIAL_PRIMARY" ? "#fbbf2440" : "#f8717140"}`,
+        }}>
+          {audit.provenanceMode === "INFERENCE_ONLY" ? "⚠ INFERENCE ONLY — NO PRIMARY SOURCES LINKED"
+            : audit.provenanceMode === "PARTIAL_PRIMARY" ? "◑ PARTIAL PRIMARY SOURCES"
+            : "✓ CANON ELIGIBLE"}
+        </span>
+        {audit.canSeal && (
+          <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4,
+            background: "#34d39920", color: "#34d399", border: "1px solid #34d39940" }}>
+            HARNESS SEAL AVAILABLE
+          </span>
+        )}
+      </div>
+
+      {(audit.warnings.length > 0 || audit.errors.length > 0) && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          {audit.errors.map((e, i) => (
+            <div key={i} style={{ fontSize: 10, color: "#f87171" }}>✗ {e}</div>
+          ))}
+          {audit.warnings.slice(0, 3).map((w, i) => (
+            <div key={i} style={{ fontSize: 10, color: "#94a3b8" }}>△ {w}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────── Match Confidence Badge (Gap 2) ─────── */
+function MatchBadge({ entity, confidence, mode }: { entity: string; confidence: number; mode: "MATCHED" | "DISCOVERY" | "DEMO" }) {
+  const color = mode === "MATCHED" ? "#34d399" : mode === "DEMO" ? "#a78bfa" : "#f59e0b";
+  return (
+    <div style={{
+      display: "inline-flex", alignItems: "center", gap: 8,
+      background: `${color}12`, border: `1px solid ${color}30`,
+      borderRadius: 6, padding: "4px 10px", fontFamily: "'Courier New', monospace",
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: color, display: "inline-block" }} />
+      <span style={{ fontSize: 11, color }}>
+        {mode === "DEMO" ? "DEMO MODE" : mode === "MATCHED" ? "MATCHED" : "DISCOVERY MODE"}
+      </span>
+      <span style={{ fontSize: 11, color: "#64748b" }}>
+        {entity.length > 30 ? entity.slice(0, 30) + "…" : entity}
+      </span>
+      <span style={{ fontSize: 10, color: "#475569" }}>
+        {(confidence * 100).toFixed(0)}% conf
+      </span>
+    </div>
+  );
+}
+
+/* ─────── Layer Card with canonical type tag (Gap 9) ─────── */
+function LayerSection({
+  number, title, subtitle, icon: Icon, isOpen, onToggle, children,
+  color = "#BFA46A", layerType
+}: {
+  number: number; title: string; subtitle: string; icon: any;
+  isOpen: boolean; onToggle: () => void; children: React.ReactNode;
+  color?: string; layerType?: keyof typeof LAYER_TYPES;
+}) {
+  const lt = layerType ? LAYER_TYPES[layerType] : null;
+  return (
+    <div className="rounded-xl bg-[#111]/60 border border-white/5 overflow-hidden transition-all duration-300">
+      <button
+        onClick={onToggle}
+        className="w-full px-5 py-4 flex items-center gap-4 text-left hover:bg-white/[0.02] transition-colors"
+      >
+        <div className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center"
+          style={{ background: `${color}20`, border: `1px solid ${color}40` }}>
+          <Icon size={16} style={{ color }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span className="font-xs font-mono text-[#555] mr-1">LAYER {number}</span>
+            {lt && (
+              <span style={{
+                fontSize: 9, padding: "1px 6px", borderRadius: 3,
+                background: `${lt.color}15`, color: lt.color,
+                border: `1px solid ${lt.color}30`, fontFamily: "'Courier New', monospace",
+                letterSpacing: "0.08em"
+              }}>
+                {lt.code} · {lt.tag}
+              </span>
+            )}
+          </div>
+          <h3 className="text-sm font-semibold text-white">{title}</h3>
+          <p className="text-xs text-[#666] truncate">{subtitle}</p>
+        </div>
+        <ChevronDown
+          size={16}
+          className="flex-shrink-0 text-[#444] transition-transform duration-300"
+          style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0)" }}
+        />
+      </button>
+      {isOpen && (
+        <div className="px-5 pb-5 border-t border-white/5">
+          <div className="pt-4">{children}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────── Score Bar ─────── */
+function ScoreBar({ score, max = 100, color = "#BFA46A" }: { score: number; max?: number; color?: string }) {
+  return (
+    <div className="flex items-center gap-3 mt-1">
+      <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden">
+        <div className="h-full rounded-full transition-all duration-700"
+          style={{ width: `${(score / max) * 100}%`, background: color }} />
+      </div>
+      <span className="text-xs font-mono text-[#666]">{score}{max === 100 ? "%" : `/${max}`}</span>
+    </div>
+  );
+}
+
+/* ─────── Move Card with evidence nodes (Gap 5) ─────── */
+function MoveCard({
+  action, confidence, rationale, evidenceNodes
+}: {
+  action: string; confidence: number; rationale: string; evidenceNodes?: string[];
+}) {
+  const [showEvidence, setShowEvidence] = useState(false);
+  const isRecommended = confidence >= 50;
+  const color = isRecommended ? "#34d399" : "#64748b";
+
+  return (
+    <div
+      className="rounded-xl p-4 border transition-all duration-200"
+      style={{
+        background: isRecommended ? "rgba(52,211,153,0.05)" : "rgba(255,255,255,0.02)",
+        borderColor: isRecommended ? "rgba(52,211,153,0.3)" : "rgba(255,255,255,0.08)",
+      }}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          {isRecommended && <CheckCircle2 size={14} style={{ color: "#34d399" }} />}
+          <span className="text-xs font-mono font-bold" style={{ color }}>
+            {action}
+          </span>
+          {isRecommended && (
+            <span className="text-xs px-2 py-0.5 rounded-full font-mono"
+              style={{ background: "rgba(52,211,153,0.15)", color: "#34d399", border: "1px solid rgba(52,211,153,0.3)" }}>
+              RECOMMENDED
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {evidenceNodes && evidenceNodes.length > 0 && (
+            <button
+              onClick={() => setShowEvidence(!showEvidence)}
+              className="text-xs font-mono flex items-center gap-1 px-2 py-0.5 rounded"
+              style={{ color: "#64748b", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+            >
+              <Info size={10} /> {showEvidence ? "hide" : "why?"}
+            </button>
+          )}
+          <div className="flex items-center gap-1">
+            <div className="w-16 h-1 rounded-full bg-white/5 overflow-hidden">
+              <div className="h-full rounded-full"
+                style={{ width: `${confidence}%`, background: color }} />
+            </div>
+            <span className="text-xs font-mono text-[#555]">{confidence}%</span>
+          </div>
+        </div>
+      </div>
+      <p className="text-sm text-[#aaa] leading-relaxed">{rationale}</p>
+      {showEvidence && evidenceNodes && evidenceNodes.length > 0 && (
+        <div style={{
+          marginTop: 10, padding: "8px 10px", borderRadius: 6,
+          background: "rgba(167,139,250,0.06)", border: "1px solid rgba(167,139,250,0.15)"
+        }}>
+          <div style={{ fontSize: 9, color: "#64748b", fontFamily: "'Courier New', monospace", marginBottom: 4 }}>
+            TRIGGERED BY EVIDENCE NODES:
+          </div>
+          {evidenceNodes.map((n, i) => (
+            <div key={i} style={{ fontSize: 10, color: "#a78bfa", fontFamily: "'Courier New', monospace" }}>
+              → {n}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────── DEMO DATA ─────── */
 const DEMO_DATA = {
   productName: "Apple AirPods Pro 2",
+  _isDemo: true,
+  _matchConfidence: 1.0,
+  _matchMode: "DEMO" as const,
   identity: {
-    company: "Apple Inc.",
-    category: "True Wireless Stereo (TWS) Earbuds",
-    launchDate: "September 2023 (USB-C revision)",
-    priceRange: "$249 MSRP",
-    positioning: "Premium active noise-cancelling true wireless earbuds positioned at the intersection of audio quality, seamless ecosystem integration, and health-tech innovation.",
-    targetCustomer: "Tech-forward professionals aged 22–45 who prioritize convenience, audio quality, and deep Apple ecosystem integration. Willing to pay premium for polish.",
+    company: "Apple Inc.", category: "True Wireless Stereo (TWS) Earbuds",
+    launchDate: "September 2023 (USB-C revision)", priceRange: "$249 MSRP",
+    positioning: "Premium ANC TWS at the intersection of audio quality, ecosystem integration, and health-tech.",
+    targetCustomer: "Tech-forward professionals 22–45, willing to pay premium for polish.",
     brandPerception: 9
   },
   anatomy: {
     techStack: [
-      { name: "Apple H2 Chip", role: "Custom SoC for audio processing, ANC, and spatial audio" },
-      { name: "Custom High-Excursion Driver", role: "Low-distortion audio driver with amplifier" },
-      { name: "Adaptive Transparency", role: "Real-time environmental sound processing" },
-      { name: "U1 Chip (Case)", role: "Ultra-wideband for Precision Finding" },
-      { name: "Bluetooth 5.3", role: "Wireless connectivity with AAC/LC3 codecs" },
-      { name: "6-Microphone Array", role: "3 per bud for ANC, transparency, and voice" }
+      { name: "Apple H2 Chip", role: "Custom SoC — audio processing, ANC, spatial audio", layerType: "SILICON" },
+      { name: "Custom High-Excursion Driver", role: "Low-distortion audio driver + amplifier", layerType: "MECHANICAL" },
+      { name: "6-Microphone Array", role: "3 per bud — ANC, transparency, voice pickup", layerType: "IO_SENSOR" },
+      { name: "Adaptive Transparency FW", role: "Real-time environmental sound processing", layerType: "SOFTWARE" },
+      { name: "Foxconn / Luxshare / Inventec", role: "Contract manufacturing — Vietnam + China", layerType: "SUPPLY_CHAIN" },
+      { name: "U1 Chip (Case)", role: "Ultra-wideband for Precision Finding", layerType: "IO_SENSOR" },
     ],
     bomEstimate: [
       { component: "H2 SoC", cost: 8.50 },
@@ -57,8 +364,6 @@ const DEMO_DATA = {
       { component: "Battery Cells (buds + case)", cost: 3.80 },
       { component: "Charging Case + MagSafe coil", cost: 9.50 },
       { component: "Silicone Tips + Mesh", cost: 1.20 },
-      { component: "PCB + Flex Circuits", cost: 5.00 },
-      { component: "Packaging + Accessories", cost: 3.50 }
     ],
     patents: [
       "US11,350,208 — Adaptive transparency processing",
@@ -68,7 +373,7 @@ const DEMO_DATA = {
     manufacturingComplexity: 8
   },
   process: {
-    overview: "Contract manufacturing through Foxconn, Luxshare Precision, and Inventec. Assembly involves precision pick-and-place SMT for H2 SoC, acoustic chamber sealing, and automated pairing/testing. Final assembly in Vietnam and China.",
+    overview: "Contract manufacturing through Foxconn, Luxshare, Inventec. Precision SMT for H2 SoC, acoustic chamber sealing, automated pairing/testing.",
     supplyChain: [
       { dependency: "Apple H2 Chip — TSMC (N5P)", risk: "High" },
       { dependency: "Knowles MEMS Microphones", risk: "Medium" },
@@ -79,800 +384,657 @@ const DEMO_DATA = {
       "Acoustic seal test — automated fit verification per bud",
       "ANC performance benchmark — -48dB target at 200Hz",
       "Battery cycle validation — 300 cycles to 80% capacity",
-      "Bluetooth pairing stress test — 1000 connect/disconnect cycles"
     ],
-    timeToMarket: "18-24 months from concept to mass production"
+    timeToMarket: "18–24 months from concept to mass production"
   },
   economics: {
-    unitEconomics: {
-      cogs: 41.70,
-      margin: 83.3,
-      msrp: 249.00,
-      grossProfit: 207.30
-    },
-    revenueModel: "Hardware sales with high-margin consumables (ear tips) and ecosystem lock-in driving repeat purchases. AppleCare+ adds recurring revenue at $29/2yr per unit.",
-    market: {
-      tam: "$42.8B — Global TWS market (2025)",
-      sam: "$18.2B — Premium TWS segment ($150+)",
-      som: "$7.8B — Apple's estimated TWS revenue (2025)"
-    },
+    unitEconomics: { cogs: 41.70, margin: 83.3, msrp: 249.00, grossProfit: 207.30 },
+    revenueModel: "Hardware + AppleCare+ recurring + ecosystem lock-in driving repeat purchases.",
+    market: { tam: "$42.8B — Global TWS (2025)", sam: "$18.2B — Premium TWS ($150+)", som: "$7.8B — Apple's estimated TWS revenue" },
     competitivePricing: [
       { product: "AirPods Pro 2", price: 249, company: "Apple" },
       { product: "WF-1000XM5", price: 298, company: "Sony" },
       { product: "QuietComfort Ultra", price: 299, company: "Bose" },
       { product: "Galaxy Buds3 Pro", price: 249, company: "Samsung" },
-      { product: "Pixel Buds Pro 2", price: 229, company: "Google" }
     ]
   },
   ecosystem: {
     competitiveData: [
-      { metric: "ANC Quality", apple: 90, sony: 95, bose: 92, samsung: 78 },
+      { metric: "ANC Quality",   apple: 90, sony: 95, bose: 92, samsung: 78 },
       { metric: "Sound Quality", apple: 88, sony: 93, bose: 85, samsung: 82 },
-      { metric: "Ecosystem", apple: 98, sony: 60, bose: 55, samsung: 75 },
-      { metric: "Battery Life", apple: 75, sony: 85, bose: 80, samsung: 82 },
-      { metric: "Comfort/Fit", apple: 90, sony: 80, bose: 88, samsung: 78 },
-      { metric: "Value", apple: 72, sony: 70, bose: 65, samsung: 80 }
+      { metric: "Ecosystem",     apple: 98, sony: 60, bose: 55, samsung: 75 },
+      { metric: "Battery Life",  apple: 75, sony: 85, bose: 80, samsung: 82 },
+      { metric: "Comfort/Fit",   apple: 90, sony: 80, bose: 88, samsung: 78 },
+      { metric: "Value",         apple: 72, sony: 70, bose: 65, samsung: 80 }
     ],
     partnerships: [
-      "Spatial Audio partnerships with Dolby Atmos music providers",
-      "Health-tech integration — hearing test, hearing aid mode (FDA cleared)",
-      "Find My network integration for Precision Finding via U1 chip",
-      "Lossless Audio support roadmap via upcoming LE Audio standard"
+      "Spatial Audio — Dolby Atmos music providers",
+      "Health-tech — FDA-cleared hearing aid mode",
+      "Find My network — Precision Finding via U1 chip",
     ],
     threats: [
-      "Sony WF-1000XM5 leads in raw audio quality benchmarks",
-      "Samsung Galaxy Buds3 Pro at same price with competitive ANC",
-      "Open-ear / bone conduction alternatives growing at 34% CAGR",
-      "EU regulation on interoperability could weaken ecosystem lock-in"
+      "Sony WF-1000XM5 leads raw audio quality benchmarks",
+      "EU interoperability regulation could weaken ecosystem lock-in",
+      "Open-ear / bone conduction growing at 34% CAGR"
     ],
     growth: [
-      "Hearing health features — FDA-cleared hearing aid mode expansion",
-      "Spatial computing — Vision Pro integration for immersive audio",
-      "Fitness biometrics — heart rate, temperature sensing in future gen",
-      "Enterprise — hearing protection + communication in industrial settings"
+      "Hearing health features — FDA hearing aid mode expansion",
+      "Spatial computing — Vision Pro integration",
+      "Fitness biometrics — future gen HRV/temperature sensing",
     ]
   },
   verdict: {
     recommended: "PARTNER" as const,
     options: [
-      {
-        action: "BUILD" as const,
-        confidence: 18,
-        rationale: "Building a competing TWS product requires 3+ years and $200M+ to match Apple's vertical integration and ecosystem — only viable for companies already in consumer electronics at scale."
-      },
-      {
-        action: "ACQUIRE" as const,
-        confidence: 12,
-        rationale: "Apple's TWS dominance is deeply tied to its ecosystem; acquiring a competitor like Bose or Jabra would not replicate the H2 chip + iOS integration advantage."
-      },
-      {
-        action: "PARTNER" as const,
-        confidence: 58,
-        rationale: "Partner with the Apple ecosystem via MFi accessories, spatial audio content, or hearing health integrations — the highest-ROI path to capture adjacent value."
-      },
-      {
-        action: "REMIX" as const,
-        confidence: 12,
-        rationale: "Remix the concept for underserved verticals: industrial hearing protection with ANC, pediatric audio limiting, or open-ear spatial audio for AR glasses."
-      }
+      { action: "BUILD" as const,   confidence: 18,
+        rationale: "Competing TWS requires 3+ years and $200M+ — only viable for companies already at consumer electronics scale.",
+        evidenceNodes: ["L5 Supply Chain — TSMC/Foxconn dependency bars new entrants", "L7 Moat — iOS ecosystem lock-in score 9.5"] },
+      { action: "ACQUIRE" as const, confidence: 12,
+        rationale: "Apple's dominance is H2 chip + iOS integration — acquiring Bose/Jabra would not replicate this.",
+        evidenceNodes: ["L1 Silicon — H2 custom SoC not licensable", "L7 Moat — ecosystem score vs competitor gap"] },
+      { action: "PARTNER" as const, confidence: 58,
+        rationale: "MFi accessories, spatial audio content, or hearing health integrations — highest-ROI path to capture adjacent value.",
+        evidenceNodes: ["L4 Software — FDA hearing aid mode creates partner entry point", "L3 I/O Sensor — 6-mic array spec creates integration opportunities"] },
+      { action: "REMIX" as const,   confidence: 12,
+        rationale: "Industrial hearing protection with ANC, pediatric audio limiting, open-ear spatial audio for AR glasses.",
+        evidenceNodes: ["L6 Pricing — $249 MSRP leaves industrial/enterprise segments unserved"] },
     ]
   }
 };
 
-/* ─────── Accordion Section ─────── */
-function LayerSection({
-  number, title, subtitle, icon: Icon, isOpen, onToggle, children, color = "#BFA46A"
-}: {
-  number: number; title: string; subtitle: string; icon: any; isOpen: boolean; onToggle: () => void; children: React.ReactNode; color?: string;
-}) {
-  return (
-    <div className="rounded-xl bg-[#111]/60 border border-white/5 overflow-hidden transition-all duration-300">
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center gap-4 p-5 text-left hover:bg-white/[0.02] transition-colors"
-        data-testid={`layer-${number}-toggle`}
-      >
-        <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${color}15` }}>
-          <Icon className="w-5 h-5" style={{ color }} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono text-[#555]">LAYER {number}</span>
-            <span className="text-xs text-[#555]">—</span>
-            <span className="text-xs text-[#666] uppercase tracking-wider">{subtitle}</span>
-          </div>
-          <h3 className="text-base font-semibold mt-0.5">{title}</h3>
-        </div>
-        <ChevronDown className={`w-5 h-5 text-[#555] transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
-      <div
-        className={`transition-all duration-300 overflow-hidden ${isOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}
-      >
-        <div className="px-5 pb-5 border-t border-white/5 pt-5">
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─────── Score Bar ─────── */
-function ScoreBar({ score, max = 10, color = "#BFA46A" }: { score: number; max?: number; color?: string }) {
-  const pct = (score / max) * 100;
-  return (
-    <div className="flex items-center gap-3">
-      <div className="flex-1 h-2 bg-[#1a1a1a] rounded-full overflow-hidden">
-        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: color }} />
-      </div>
-      <span className="text-sm font-mono font-semibold" style={{ color }}>{score}/{max}</span>
-    </div>
-  );
-}
-
-/* ─────── Custom Tooltip ─────── */
-function CustomBarTooltip({ active, payload, label }: any) {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-xs">
-        <p className="text-[#ccc] font-medium mb-1">{label}</p>
-        {payload.map((p: any, i: number) => (
-          <p key={i} style={{ color: p.color }} className="font-mono">{p.name}: ${p.value}</p>
-        ))}
-      </div>
-    );
-  }
-  return null;
-}
-
-/* ─────── Reality Lens Page ─────── */
+/* ─────── Main Component ─────── */
 export default function RealityLensPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
-  const [result, setResult] = useState<typeof DEMO_DATA | null>(null);
-  const [analysisScores, setAnalysisScores] = useState<{ pink?: number; volt?: number; moat?: number }>({});
+  const [result, setResult] = useState<any | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
+  const [matchConfidence, setMatchConfidence] = useState(0);
+  const [matchMode, setMatchMode] = useState<"MATCHED" | "DISCOVERY" | "DEMO">("DEMO");
   const [openLayers, setOpenLayers] = useState<Set<number>>(new Set([1]));
   const [, setLocation] = useLocation();
 
   const toggleLayer = (n: number) => {
     setOpenLayers(prev => {
       const next = new Set(prev);
-      if (next.has(n)) next.delete(n);
-      else next.add(n);
+      if (next.has(n)) next.delete(n); else next.add(n);
       return next;
     });
   };
 
+  /* ── Audit + computed scores (Gaps 3, 7, 10) ── */
+  const audit = useMemo(
+    () => auditTeardown(result, isDemo, matchConfidence),
+    [result, isDemo, matchConfidence]
+  );
+
+  const computedConfidence = useMemo(() => {
+    if (!result) return 0;
+    const primarySourceCount = isDemo ? 3
+      : (result.anatomy?.patents?.length || 0) + (result.process?.supplyChain?.length || 0);
+    return computeConfidenceFromCoverage(audit.coveragePct, matchConfidence, primarySourceCount);
+  }, [result, isDemo, matchConfidence, audit.coveragePct]);
+
+  const categoryFrontier = 9.2; // TWS category benchmark
+  const stoneScore = result ? (result._stoneScore || 7.4) : 0;
+  const omegaGap = result ? computeOmegaGap(stoneScore, categoryFrontier) : 0;
+
+  /* ── API call ── */
   const handleAnalyze = useCallback(async () => {
+    if (!query.trim()) return;
     setAnalyzing(true);
     setResult(null);
-    
-    const searchQuery = query.trim() || "Apple AirPods Pro 2";
-    
+    setIsDemo(false);
+
     try {
-      const response = await fetch('./api/reality-lens', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: searchQuery }),
+      const response = await fetch("./api/reality-lens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: query.trim() }),
       });
 
-      if (!response.ok) {
-        throw new Error('Analysis failed');
-      }
-
+      if (!response.ok) throw new Error(`API error ${response.status}`);
       const data = await response.json();
-      
-      if (data.success && data.analysis) {
-        // Transform AI result to match display format
-        const ai = data.analysis;
-        const transformed = {
-          subject: ai.subject || searchQuery,
-          type: ai.type || "Product",
-          identity: ai.identity || DEMO_DATA.identity,
-          anatomy: ai.anatomy || DEMO_DATA.anatomy,
-          process: ai.process || DEMO_DATA.process,
-          economics: ai.economics || DEMO_DATA.economics,
-          ecosystem: ai.ecosystem || DEMO_DATA.ecosystem,
-          verdict: ai.verdict || DEMO_DATA.verdict,
-          summary: ai.summary || "Analysis complete.",
-        };
-        setResult(transformed as any);
-        setAnalysisScores({
-          pink: data.pink?.critical_node?.score,
-          volt: data.volt?.score,
-          moat: data.moat?.score,
-        });
-      } else {
-        // Fallback to demo data
-        setResult(DEMO_DATA);
-        setAnalysisScores({});
-      }
-    } catch (error) {
-      console.error('Reality Lens error:', error);
-      // Fallback to demo data on error
-      setResult(DEMO_DATA);
-      setAnalysisScores({});
+      if (!data.success) throw new Error(data.error || "Analysis failed");
+
+      const ai = data.analysis;
+      const conf = typeof ai.verdict?.confidence === "number" ? ai.verdict.confidence : 0.65;
+      const mode: "MATCHED" | "DISCOVERY" = conf >= 0.70 ? "MATCHED" : "DISCOVERY";
+
+      // Attach audit metadata
+      const transformed = {
+        ...ai,
+        _stoneScore: ai.stone_score || 7.0,
+        _isDemo: false,
+        _matchConfidence: conf,
+        _matchMode: mode,
+        productName: ai.subject || query.trim(),
+        identity: {
+          company:          ai.identity?.company || "—",
+          category:         ai.identity?.category || "—",
+          launchDate:       ai.identity?.launch_date || "—",
+          priceRange:       ai.identity?.price_range || "—",
+          positioning:      ai.identity?.positioning || "—",
+          targetCustomer:   ai.identity?.target_customer || "—",
+          brandPerception:  ai.identity?.brand_perception_score || 7,
+        },
+        anatomy: {
+          techStack: (ai.anatomy?.key_components || []).map((c: any) => ({
+            name: c.name, role: c.purpose, layerType: "SILICON",
+          })),
+          bomEstimate: (ai.anatomy?.key_components || []).map((c: any) => ({
+            component: c.name, cost: parseFloat(c.estimated_cost) || 0,
+          })),
+          patents: ai.anatomy?.key_patents || [],
+          manufacturingComplexity: ai.anatomy?.manufacturing_complexity_score || 7,
+        },
+        process: {
+          overview:            ai.process?.manufacturing_overview || "—",
+          supplyChain:         (ai.process?.supply_chain || []).map((s: any) => ({
+            dependency: `${s.stage} — ${s.location}`, risk: s.risk,
+          })),
+          qualityCheckpoints:  ai.process?.quality_checkpoints || [],
+          timeToMarket:        ai.process?.time_to_market || "—",
+        },
+        economics: {
+          unitEconomics: {
+            cogs:        ai.economics?.unit_economics?.cogs || 0,
+            margin:      ai.economics?.unit_economics?.gross_margin_pct || 0,
+            msrp:        ai.economics?.unit_economics?.retail_price || 0,
+            grossProfit: 0,
+          },
+          revenueModel:       ai.economics?.revenue_model || "—",
+          market: {
+            tam: ai.economics?.tam || "—",
+            sam: ai.economics?.sam || "—",
+            som: ai.economics?.som || "—",
+          },
+          competitivePricing: (ai.economics?.competitive_pricing || []).map((c: any) => ({
+            product: c.competitor, price: parseFloat(c.price) || 0, company: c.competitor,
+          })),
+        },
+        ecosystem: {
+          competitiveData: Object.entries(ai.ecosystem?.competitive_dimensions || {}).map(([k, v]) => ({
+            metric: k.charAt(0).toUpperCase() + k.slice(1),
+            subject: Math.round((v as number) * 100),
+          })),
+          partnerships: ai.ecosystem?.partnerships || [],
+          threats: ai.ecosystem?.threats || [],
+          growth: ai.ecosystem?.growth_vectors || [],
+        },
+        verdict: {
+          recommended: ai.verdict?.recommended || "PARTNER",
+          options: [
+            { action: "BUILD",   confidence: 25, rationale: ai.verdict?.rationale || "—", evidenceNodes: ["L7 Moat", "L5 Supply Chain"] },
+            { action: "ACQUIRE", confidence: 15, rationale: "Acquisition path analysis pending primary source data.",  evidenceNodes: ["L6 Pricing", "L7 Moat"] },
+            { action: "PARTNER", confidence: ai.verdict?.recommended === "PARTNER" ? 55 : 30,
+              rationale: ai.verdict?.alternatives?.[0] || "Partnership pathway identified.", evidenceNodes: ["L4 Software", "L3 I/O Sensor"] },
+            { action: "REMIX",   confidence: 10, rationale: ai.verdict?.alternatives?.[1] || "Remix potential for adjacent verticals.", evidenceNodes: ["L6 Pricing"] },
+          ],
+        },
+      };
+
+      setMatchConfidence(conf);
+      setMatchMode(mode);
+      setResult(transformed);
+    } catch (err: any) {
+      // Discovery Mode fallback (Gap 8 — visually degraded)
+      setMatchConfidence(0.40);
+      setMatchMode("DISCOVERY");
+      setIsDemo(false);
+      setResult({
+        _stoneScore: 5.0,
+        _isDemo: false,
+        _matchConfidence: 0.40,
+        _matchMode: "DISCOVERY",
+        _discoveryMode: true,
+        productName: query.trim(),
+        identity: { company: "—", category: "Category inference only", launchDate: "—",
+          priceRange: "—", positioning: "No primary sources linked — add image or comparables to improve.",
+          targetCustomer: "—", brandPerception: 5 },
+        anatomy: { techStack: [], bomEstimate: [], patents: [], manufacturingComplexity: 5 },
+        process: { overview: "Supply chain data unavailable.", supplyChain: [], qualityCheckpoints: [], timeToMarket: "—" },
+        economics: { unitEconomics: { cogs: 0, margin: 0, msrp: 0, grossProfit: 0 },
+          revenueModel: "—", market: { tam: "—", sam: "—", som: "—" }, competitivePricing: [] },
+        ecosystem: { competitiveData: [], partnerships: [], threats: ["No competitive data available"], growth: [] },
+        verdict: { recommended: "PARTNER", options: [
+          { action: "BUILD",   confidence: 25, rationale: "Insufficient data for BUILD recommendation.", evidenceNodes: [] },
+          { action: "ACQUIRE", confidence: 15, rationale: "Insufficient data for ACQUIRE recommendation.", evidenceNodes: [] },
+          { action: "PARTNER", confidence: 50, rationale: "Default to PARTNER pending primary source analysis.",
+            evidenceNodes: ["Evidence gap: no comparables linked", "Evidence gap: no image provided"] },
+          { action: "REMIX",   confidence: 10, rationale: "Remix potential cannot be assessed without product data.", evidenceNodes: [] },
+        ]},
+      });
+    } finally {
+      setAnalyzing(false);
     }
-    
-    setAnalyzing(false);
-    setOpenLayers(new Set([1]));
   }, [query]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!query.trim()) {
-      setQuery("Apple AirPods Pro 2");
-    }
-    handleAnalyze();
+  const loadDemo = () => {
+    setResult(DEMO_DATA);
+    setIsDemo(true);
+    setMatchConfidence(1.0);
+    setMatchMode("DEMO");
+    setQuery("Apple AirPods Pro 2");
   };
 
-  const sidebarItems = [
-    { icon: LayoutDashboard, label: "Dashboard", href: "/", active: false },
-    { icon: Camera, label: "Factorizer", href: "/analyze", active: false },
-    { icon: Layers, label: "Reality Lens", href: "/reality-lens", active: true },
-    { icon: FileText, label: "My Reports", href: "/reports", active: false },
-    { icon: CreditCard, label: "Pricing", href: "/", active: false, gold: true },
-    { icon: Settings, label: "Settings", href: "/settings", active: false }
-  ];
-
-  const resetAnalysis = () => {
+  const reset = () => {
     setResult(null);
     setQuery("");
-    setAnalyzing(false);
+    setIsDemo(false);
+    setMatchConfidence(0);
   };
 
+  const isDiscovery = result?._discoveryMode === true;
+
   return (
-    <div className="min-h-screen bg-[#0A0A0A] text-[#E8E2D4] flex">
-      {/* ═══ Sidebar ═══ */}
-      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-[#0f0f0f] border-r border-white/5 flex flex-col transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
-        <div className="p-5 border-b border-white/5">
-          <Link href="/">
-            <FactorizerLogo className="h-6 cursor-pointer" />
-          </Link>
-        </div>
-        <nav className="flex-1 p-4 space-y-1">
-          {sidebarItems.map((item, i) => (
-            <Link key={i} href={item.href}>
-              <span
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors cursor-pointer ${
-                  item.active
-                    ? 'bg-white/5 text-[#E8E2D4]'
-                    : item.gold
-                      ? 'text-[#BFA46A] hover:bg-[#BFA46A]/5'
-                      : 'text-[#666] hover:bg-white/5 hover:text-[#999]'
-                }`}
-                data-testid={`sidebar-${item.label.toLowerCase().replace(/\s/g, '-')}`}
-              >
-                <item.icon className="w-4 h-4" />
-                {item.label}
-              </span>
+    <div className="min-h-screen bg-[#080808] text-white">
+      {/* ── Header ── */}
+      <header className="sticky top-0 z-50 bg-[#080808]/95 backdrop-blur border-b border-white/5">
+        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1.5 rounded-lg hover:bg-white/5 lg:hidden">
+              <Menu size={18} className="text-[#888]" />
+            </button>
+            <Link href="/">
+              <FactorizerLogo className="h-6" />
             </Link>
-          ))}
-        </nav>
-        <div className="p-4 border-t border-white/5">
-          <div className="flex items-center gap-3 px-3 py-2">
-            <div className="w-8 h-8 rounded-full bg-[#BFA46A]/20 flex items-center justify-center text-xs font-semibold text-[#BFA46A]">W</div>
-            <div>
-              <div className="text-sm font-medium">Waveform</div>
-              <div className="text-xs text-[#555]">Free Plan</div>
-            </div>
+            <span className="hidden sm:block text-xs font-mono text-[#555] border-l border-white/10 pl-3 ml-1">
+              REALITY LENS
+            </span>
+          </div>
+          <nav className="hidden lg:flex items-center gap-1">
+            {[
+              { icon: LayoutDashboard, label: "Dashboard", href: "/analyze" },
+              { icon: Globe,           label: "Reality Lens", href: "/reality-lens", active: true },
+              { icon: FileText,        label: "Reports", href: "/admin-waitlist" },
+              { icon: Settings,        label: "Settings", href: "#" },
+            ].map(({ icon: Icon, label, href, active }) => (
+              <Link key={label} href={href}>
+                <button className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                  active ? "bg-white/8 text-white" : "text-[#666] hover:text-white hover:bg-white/5"}`}>
+                  <Icon size={15} /> {label}
+                </button>
+              </Link>
+            ))}
+          </nav>
+          <div className="flex items-center gap-2">
+            <Link href="/analyze">
+              <button className="hidden sm:flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-white/10 text-[#888] hover:text-white hover:border-white/20 transition-colors">
+                <Camera size={13} /> Factorizer
+              </button>
+            </Link>
           </div>
         </div>
-      </aside>
+      </header>
 
-      {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/60 z-30 lg:hidden" onClick={() => setSidebarOpen(false)} />
-      )}
-
-      {/* ═══ Main Content ═══ */}
-      <main className="flex-1 lg:ml-64 min-h-screen">
-        <header className="sticky top-0 z-20 bg-[#0A0A0A]/90 backdrop-blur-lg border-b border-white/5">
-          <div className="flex items-center justify-between px-6 h-14">
-            <div className="flex items-center gap-3">
-              <button className="lg:hidden p-2 text-[#666] hover:text-[#999]" onClick={() => setSidebarOpen(true)} data-testid="mobile-menu-rl">
-                <Menu className="w-5 h-5" />
+      <main className="max-w-5xl mx-auto px-4 py-8">
+        {!result ? (
+          /* ── Search Surface ── */
+          <div className="max-w-2xl mx-auto text-center py-16">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-[#BFA46A]/30 bg-[#BFA46A]/5 mb-6">
+              <Globe size={12} className="text-[#BFA46A]" />
+              <span className="text-xs font-mono text-[#BFA46A]">REALITY LENS · STRATEGIC INTELLIGENCE</span>
+            </div>
+            <h1 className="text-3xl font-bold mb-3">5-Layer Strategic Factorization</h1>
+            <p className="text-[#666] mb-8 leading-relaxed">
+              Enter any product, company, or technology. Get identity, anatomy, process, economics, and ecosystem — scored, audited, and stratified.
+            </p>
+            <div className="flex gap-2 mb-4">
+              <input
+                type="text"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleAnalyze()}
+                placeholder="Apple Vision Pro, NVIDIA Blackwell, Neuralink N1..."
+                className="flex-1 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-[#444] focus:outline-none focus:border-[#BFA46A]/50"
+              />
+              <button
+                onClick={handleAnalyze}
+                disabled={!query.trim() || analyzing}
+                className="px-5 py-3 rounded-xl font-semibold text-sm transition-all"
+                style={{ background: "#BFA46A", color: "#000", opacity: (!query.trim() || analyzing) ? 0.5 : 1 }}
+              >
+                {analyzing ? "Analyzing…" : "Analyze"}
               </button>
-              <Link href="/">
-                <span className="flex items-center gap-2 text-sm text-[#555] hover:text-[#BFA46A] transition-colors cursor-pointer">
-                  <ArrowLeft className="w-4 h-4" />
-                  Back to site
-                </span>
-              </Link>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#0EA5E9]/10 text-[#0EA5E9] text-xs font-medium">
-                <Layers className="w-3 h-3" />
-                Reality Lens
-              </div>
-            </div>
+            <button onClick={loadDemo} className="text-xs text-[#555] hover:text-[#BFA46A] transition-colors font-mono">
+              → Load AirPods Pro 2 demo
+            </button>
           </div>
-        </header>
+        ) : (
+          /* ── Results Surface ── */
+          <div>
+            {/* Top bar: match badge + reset */}
+            <div className="flex items-center justify-between mb-4">
+              <MatchBadge
+                entity={result.productName}
+                confidence={matchConfidence}
+                mode={matchMode}
+              />
+              <button onClick={reset} className="text-xs font-mono text-[#555] hover:text-white flex items-center gap-1">
+                <ArrowLeft size={12} /> New Analysis
+              </button>
+            </div>
 
-        <div className="p-6 max-w-5xl mx-auto">
-          {/* ═══ Input Section ═══ */}
-          {!result && !analyzing && (
-            <div className="mb-8">
-              <div className="mb-8">
-                <h1 className="text-xl font-bold mb-1">Reality Lens</h1>
-                <p className="text-sm text-[#666]">Enter any product, company, or technology for a 5-layer strategic deep dive</p>
+            {/* Audit Rail — always first (Gap 10) */}
+            <AuditRail audit={audit} computedConfidence={computedConfidence} />
+
+            {/* Discovery Mode banner (Gap 8) */}
+            {isDiscovery && (
+              <div style={{
+                background: "repeating-linear-gradient(45deg, rgba(245,158,11,0.03) 0px, rgba(245,158,11,0.03) 10px, transparent 10px, transparent 20px)",
+                border: "1px solid rgba(245,158,11,0.25)",
+                borderRadius: 8, padding: "10px 14px", marginBottom: 16,
+                fontFamily: "'Courier New', monospace", fontSize: 11, color: "#f59e0b"
+              }}>
+                ⚠ DISCOVERY MODE — Output uses category priors only. No primary sources linked.
+                Add an image or specify comparables to unlock higher-confidence analysis.
               </div>
+            )}
 
-              <form onSubmit={handleSubmit} className="max-w-2xl">
-                <div className="relative">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#555]" />
-                  <input
-                    type="text"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder='e.g. "Apple AirPods Pro 2" or "Tesla Model 3"'
-                    className="w-full pl-12 pr-4 py-4 bg-[#111] border border-white/10 rounded-xl text-[#E8E2D4] placeholder-[#555] focus:outline-none focus:border-[#BFA46A]/40 focus:ring-1 focus:ring-[#BFA46A]/20 transition-all text-base"
-                    data-testid="input-query"
-                  />
-                </div>
-                <div className="flex items-center gap-4 mt-4">
-                  <button
-                    type="submit"
-                    className="inline-flex items-center gap-2 px-6 py-3 bg-[#BFA46A] text-[#0A0A0A] font-semibold rounded-lg hover:bg-[#D4BE8A] transition-all"
-                    data-testid="btn-analyze"
-                  >
-                    <Zap className="w-4 h-4" />
-                    Analyze
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setQuery("Apple AirPods Pro 2"); handleAnalyze(); }}
-                    className="inline-flex items-center gap-2 px-4 py-3 text-sm font-medium text-[#BFA46A] border border-[#BFA46A]/20 rounded-lg hover:bg-[#BFA46A]/5 transition-colors"
-                    data-testid="btn-demo-rl"
-                  >
-                    <Target className="w-4 h-4" />
-                    Run Demo — AirPods Pro 2
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </form>
-
-              {/* Feature preview */}
-              <div className="grid sm:grid-cols-5 gap-3 mt-12">
-                {[
-                  { num: "01", name: "Identity", desc: "Who / What", icon: Target },
-                  { num: "02", name: "Anatomy", desc: "What's Inside", icon: Cpu },
-                  { num: "03", name: "Process", desc: "How It's Made", icon: Factory },
-                  { num: "04", name: "Economics", desc: "What It Costs", icon: DollarSign },
-                  { num: "05", name: "Ecosystem", desc: "Where It Fits", icon: Globe }
-                ].map((l) => (
-                  <div key={l.num} className="p-4 rounded-xl bg-[#111]/40 border border-white/5 text-center">
-                    <l.icon className="w-5 h-5 mx-auto mb-2 text-[#BFA46A]" />
-                    <p className="text-xs font-mono text-[#555] mb-1">Layer {l.num}</p>
-                    <p className="text-sm font-semibold">{l.name}</p>
-                    <p className="text-xs text-[#666] mt-0.5">{l.desc}</p>
-                  </div>
-                ))}
+            {/* Header */}
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold" style={{ opacity: isDiscovery ? 0.7 : 1 }}>
+                {result.productName}
+              </h1>
+              <div className="flex gap-4 mt-2" style={{ fontFamily: "'Courier New', monospace", fontSize: 11, color: "#64748b" }}>
+                <span>Ω-GAP: <span style={{ color: omegaGap > 2 ? "#f87171" : "#34d399" }}>{omegaGap.toFixed(1)}</span></span>
+                <span>STONE: <span style={{ color: "#d4af5a" }}>{stoneScore.toFixed(1)}</span></span>
+                <span>FRONTIER: <span style={{ color: "#22d4d4" }}>{categoryFrontier}</span></span>
+                <span style={{ color: audit.provenanceMode === "INFERENCE_ONLY" ? "#f87171" : "#94a3b8" }}>
+                  {audit.provenanceMode === "INFERENCE_ONLY" ? "⚠ INFERENCE ONLY"
+                   : audit.provenanceMode === "PARTIAL_PRIMARY" ? "◑ PARTIAL PRIMARY"
+                   : "✓ CANON ELIGIBLE"}
+                </span>
               </div>
             </div>
-          )}
 
-          {/* ═══ Analyzing State ═══ */}
-          {analyzing && (
-            <div className="flex flex-col items-center justify-center py-24">
-              <div className="relative w-20 h-20 mb-6">
-                <div className="absolute inset-0 rounded-full border-2 border-[#BFA46A]/20" />
-                <div className="absolute inset-0 rounded-full border-2 border-t-[#BFA46A] animate-spin" />
-                <div className="absolute inset-3 rounded-full border-2 border-t-[#0EA5E9] animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }} />
-                <Layers className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 text-[#BFA46A]" />
-              </div>
-              <h2 className="text-lg font-semibold mb-2">Analyzing {query || "Apple AirPods Pro 2"}</h2>
-              <p className="text-sm text-[#666]">Running 5-layer strategic factorization...</p>
-              <div className="flex gap-2 mt-6">
-                {["Identity", "Anatomy", "Process", "Economics", "Ecosystem"].map((l, i) => (
-                  <div
-                    key={l}
-                    className="px-3 py-1.5 rounded-full text-xs font-medium border border-white/5 animate-pulse"
-                    style={{ animationDelay: `${i * 200}ms` }}
-                  >
-                    {l}
+            {/* 5-Layer Accordion */}
+            <div className="space-y-2 mb-8" style={{ opacity: isDiscovery ? 0.65 : 1 }}>
+              {/* L1 Identity */}
+              <LayerSection number={1} title="Identity & Positioning" subtitle={result.identity.category}
+                icon={Target} isOpen={openLayers.has(1)} onToggle={() => toggleLayer(1)} layerType="IO_SENSOR">
+                <div className="grid grid-cols-2 gap-4">
+                  {[
+                    ["Company", result.identity.company],
+                    ["Category", result.identity.category],
+                    ["Launch", result.identity.launchDate],
+                    ["Price Range", result.identity.priceRange],
+                  ].map(([label, val]) => (
+                    <div key={label}>
+                      <p className="text-xs text-[#666] mb-1">{label}</p>
+                      <p className="text-sm font-medium">{val}</p>
+                    </div>
+                  ))}
+                  <div className="col-span-2">
+                    <p className="text-xs text-[#666] mb-1">Positioning</p>
+                    <p className="text-sm text-[#999] leading-relaxed">{result.identity.positioning}</p>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ═══ Results ═══ */}
-          {result && (
-            <div className="space-y-4 animate-fade-in-up">
-              {/* Product Header */}
-              <div className="flex items-start justify-between flex-wrap gap-4 mb-6">
-                <div>
-                  <div className="flex items-center gap-3 mb-1">
-                    <h1 className="text-xl font-bold">{result.productName}</h1>
-                    <button onClick={resetAnalysis} className="p-1 text-[#555] hover:text-[#999]" data-testid="btn-reset-rl">
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#0EA5E9]/10 text-[#0EA5E9] text-xs font-medium">
-                      <Layers className="w-3 h-3" /> 5-Layer Analysis
-                    </span>
-                    <span className="text-xs text-[#555]">Strategic factorization complete</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* ═══ Layer 1 — Identity ═══ */}
-              <LayerSection
-                number={1} title="Identity" subtitle="Who / What"
-                icon={Target} isOpen={openLayers.has(1)} onToggle={() => toggleLayer(1)}
-                color="#BFA46A"
-              >
-                <div className="grid sm:grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-xs text-[#555] uppercase tracking-wider">Company</label>
-                      <p className="text-sm font-medium mt-1">{result.identity.company}</p>
-                    </div>
-                    <div>
-                      <label className="text-xs text-[#555] uppercase tracking-wider">Category</label>
-                      <p className="text-sm font-medium mt-1">{result.identity.category}</p>
-                    </div>
-                    <div>
-                      <label className="text-xs text-[#555] uppercase tracking-wider">Launch Date</label>
-                      <p className="text-sm font-medium mt-1">{result.identity.launchDate}</p>
-                    </div>
-                    <div>
-                      <label className="text-xs text-[#555] uppercase tracking-wider">Price Range</label>
-                      <p className="text-sm font-medium mt-1 text-[#BFA46A]">{result.identity.priceRange}</p>
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-xs text-[#555] uppercase tracking-wider">Market Positioning</label>
-                      <p className="text-sm text-[#999] mt-1 leading-relaxed">{result.identity.positioning}</p>
-                    </div>
-                    <div>
-                      <label className="text-xs text-[#555] uppercase tracking-wider">Target Customer</label>
-                      <p className="text-sm text-[#999] mt-1 leading-relaxed">{result.identity.targetCustomer}</p>
-                    </div>
-                    <div>
-                      <label className="text-xs text-[#555] uppercase tracking-wider">Brand Perception Score</label>
-                      <div className="mt-2">
-                        <ScoreBar score={result.identity.brandPerception} color="#BFA46A" />
-                      </div>
-                    </div>
+                  <div className="col-span-2">
+                    <p className="text-xs text-[#666] mb-1">Brand Perception</p>
+                    <ScoreBar score={result.identity.brandPerception} max={10} color="#BFA46A" />
                   </div>
                 </div>
               </LayerSection>
 
-              {/* ═══ Layer 2 — Anatomy ═══ */}
-              <LayerSection
-                number={2} title="Anatomy" subtitle="What's Inside"
-                icon={Cpu} isOpen={openLayers.has(2)} onToggle={() => toggleLayer(2)}
-                color="#0EA5E9"
-              >
-                <div className="space-y-6">
-                  {/* Tech Stack */}
-                  <div>
-                    <h4 className="text-xs text-[#555] uppercase tracking-wider mb-3">Core Technology Stack</h4>
-                    <div className="grid sm:grid-cols-2 gap-2">
-                      {result.anatomy.techStack.map((t, i) => (
-                        <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-[#0A0A0A] border border-white/[0.03]">
-                          <Cpu className="w-4 h-4 text-[#0EA5E9] mt-0.5 shrink-0" />
-                          <div>
-                            <p className="text-sm font-medium">{t.name}</p>
-                            <p className="text-xs text-[#666] mt-0.5">{t.role}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* BOM */}
-                  <div>
-                    <h4 className="text-xs text-[#555] uppercase tracking-wider mb-3">Bill of Materials Estimate</h4>
-                    <div className="overflow-x-auto rounded-lg border border-white/5">
-                      <table className="w-full text-sm" data-testid="table-rl-bom">
-                        <thead>
-                          <tr className="border-b border-white/5 text-[#555] text-xs uppercase tracking-wider">
-                            <th className="text-left px-4 py-2.5 font-medium">Component</th>
-                            <th className="text-right px-4 py-2.5 font-medium">Est. Cost</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {result.anatomy.bomEstimate.map((b, i) => (
-                            <tr key={i} className="border-b border-white/[0.03] hover:bg-white/[0.02]">
-                              <td className="px-4 py-2.5 font-medium">{b.component}</td>
-                              <td className="px-4 py-2.5 text-right font-mono text-[#0EA5E9]">${b.cost.toFixed(2)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                        <tfoot>
-                          <tr className="border-t border-white/10">
-                            <td className="px-4 py-2.5 font-semibold">Total Estimated BOM</td>
-                            <td className="px-4 py-2.5 text-right font-mono font-bold text-[#BFA46A]">
-                              ${result.anatomy.bomEstimate.reduce((s, b) => s + b.cost, 0).toFixed(2)}
-                            </td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Patents */}
-                  <div>
-                    <h4 className="text-xs text-[#555] uppercase tracking-wider mb-3">Key Patents & IP</h4>
-                    <ul className="space-y-2">
-                      {result.anatomy.patents.map((p, i) => (
-                        <li key={i} className="flex items-start gap-2 text-sm text-[#888]">
-                          <Shield className="w-4 h-4 text-[#0EA5E9] mt-0.5 shrink-0" />
-                          {p}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* Mfg Complexity */}
-                  <div>
-                    <h4 className="text-xs text-[#555] uppercase tracking-wider mb-2">Manufacturing Complexity</h4>
-                    <ScoreBar score={result.anatomy.manufacturingComplexity} color="#0EA5E9" />
-                  </div>
-                </div>
-              </LayerSection>
-
-              {/* ═══ Layer 3 — Process ═══ */}
-              <LayerSection
-                number={3} title="Process" subtitle="How It's Made"
-                icon={Factory} isOpen={openLayers.has(3)} onToggle={() => toggleLayer(3)}
-                color="#BFA46A"
-              >
-                <div className="space-y-6">
-                  <div>
-                    <h4 className="text-xs text-[#555] uppercase tracking-wider mb-2">Manufacturing Overview</h4>
-                    <p className="text-sm text-[#999] leading-relaxed">{result.process.overview}</p>
-                  </div>
-
-                  <div>
-                    <h4 className="text-xs text-[#555] uppercase tracking-wider mb-3">Supply Chain Dependencies</h4>
-                    <div className="space-y-2">
-                      {result.process.supplyChain.map((s, i) => (
-                        <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-[#0A0A0A] border border-white/[0.03]">
-                          <span className="text-sm">{s.dependency}</span>
-                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                            s.risk === "High" ? "bg-red-500/10 text-red-400" :
-                            s.risk === "Medium" ? "bg-yellow-500/10 text-yellow-400" :
-                            "bg-green-500/10 text-green-400"
-                          }`}>{s.risk} Risk</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 className="text-xs text-[#555] uppercase tracking-wider mb-3">Quality Control Checkpoints</h4>
-                    <ul className="space-y-2">
-                      {result.process.qualityCheckpoints.map((q, i) => (
-                        <li key={i} className="flex items-start gap-2 text-sm text-[#888]">
-                          <CheckCircle2 className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
-                          {q}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div>
-                    <h4 className="text-xs text-[#555] uppercase tracking-wider mb-1">Time to Market</h4>
-                    <p className="text-sm font-medium text-[#BFA46A]">{result.process.timeToMarket}</p>
-                  </div>
-                </div>
-              </LayerSection>
-
-              {/* ═══ Layer 4 — Economics ═══ */}
-              <LayerSection
-                number={4} title="Economics" subtitle="What It Costs / Makes"
-                icon={DollarSign} isOpen={openLayers.has(4)} onToggle={() => toggleLayer(4)}
-                color="#0EA5E9"
-              >
-                <div className="space-y-6">
-                  {/* Unit Economics */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div className="p-4 rounded-lg bg-[#0A0A0A] border border-white/[0.03]">
-                      <p className="text-xs text-[#555] uppercase tracking-wider mb-1">COGS</p>
-                      <p className="text-xl font-bold text-[#E8E2D4]">${result.economics.unitEconomics.cogs}</p>
-                    </div>
-                    <div className="p-4 rounded-lg bg-[#0A0A0A] border border-white/[0.03]">
-                      <p className="text-xs text-[#555] uppercase tracking-wider mb-1">MSRP</p>
-                      <p className="text-xl font-bold text-[#BFA46A]">${result.economics.unitEconomics.msrp}</p>
-                    </div>
-                    <div className="p-4 rounded-lg bg-[#0A0A0A] border border-white/[0.03]">
-                      <p className="text-xs text-[#555] uppercase tracking-wider mb-1">Gross Profit</p>
-                      <p className="text-xl font-bold text-green-500">${result.economics.unitEconomics.grossProfit}</p>
-                    </div>
-                    <div className="p-4 rounded-lg bg-[#0A0A0A] border border-white/[0.03]">
-                      <p className="text-xs text-[#555] uppercase tracking-wider mb-1">Margin</p>
-                      <p className="text-xl font-bold text-[#0EA5E9]">{result.economics.unitEconomics.margin}%</p>
-                    </div>
-                  </div>
-
-                  {/* Revenue Model */}
-                  <div>
-                    <h4 className="text-xs text-[#555] uppercase tracking-wider mb-2">Revenue Model</h4>
-                    <p className="text-sm text-[#999] leading-relaxed">{result.economics.revenueModel}</p>
-                  </div>
-
-                  {/* TAM/SAM/SOM */}
-                  <div>
-                    <h4 className="text-xs text-[#555] uppercase tracking-wider mb-3">Market Size</h4>
-                    <div className="space-y-2">
-                      {[
-                        { label: "TAM", value: result.economics.market.tam, color: "#BFA46A", width: "100%" },
-                        { label: "SAM", value: result.economics.market.sam, color: "#0EA5E9", width: "42%" },
-                        { label: "SOM", value: result.economics.market.som, color: "#22c55e", width: "18%" }
-                      ].map((m) => (
-                        <div key={m.label} className="flex items-center gap-4">
-                          <span className="text-xs font-mono text-[#555] w-8">{m.label}</span>
-                          <div className="flex-1 h-8 bg-[#0A0A0A] rounded-lg overflow-hidden relative">
-                            <div className="h-full rounded-lg flex items-center px-3" style={{ width: m.width, backgroundColor: `${m.color}20` }}>
-                              <span className="text-xs font-medium" style={{ color: m.color }}>{m.value}</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Competitive Pricing */}
-                  <div>
-                    <h4 className="text-xs text-[#555] uppercase tracking-wider mb-3">Competitive Pricing Comparison</h4>
-                    <div className="h-48">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={result.economics.competitivePricing} layout="vertical">
-                          <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" horizontal={false} />
-                          <XAxis type="number" tick={{ fill: '#555', fontSize: 11 }} domain={[0, 350]} tickFormatter={(v) => `$${v}`} />
-                          <YAxis dataKey="product" type="category" tick={{ fill: '#888', fontSize: 11 }} width={140} />
-                          <Tooltip content={<CustomBarTooltip />} />
-                          <Bar dataKey="price" name="Price" radius={[0, 4, 4, 0]}>
-                            {result.economics.competitivePricing.map((entry, i) => (
-                              <Cell key={i} fill={entry.company === "Apple" ? "#BFA46A" : "#333"} />
-                            ))}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                </div>
-              </LayerSection>
-
-              {/* ═══ Layer 5 — Ecosystem ═══ */}
-              <LayerSection
-                number={5} title="Ecosystem" subtitle="Where It Fits"
-                icon={Globe} isOpen={openLayers.has(5)} onToggle={() => toggleLayer(5)}
-                color="#BFA46A"
-              >
-                <div className="space-y-6">
-                  {/* Competitive Landscape Radar */}
-                  <div>
-                    <h4 className="text-xs text-[#555] uppercase tracking-wider mb-3">Competitive Landscape</h4>
-                    <div className="h-72">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <RadarChart data={result.ecosystem.competitiveData} cx="50%" cy="50%" outerRadius="70%">
-                          <PolarGrid stroke="#222" />
-                          <PolarAngleAxis dataKey="metric" tick={{ fill: '#666', fontSize: 11 }} />
-                          <PolarRadiusAxis tick={false} axisLine={false} />
-                          <Radar name="Apple" dataKey="apple" stroke="#BFA46A" fill="#BFA46A" fillOpacity={0.15} strokeWidth={2} />
-                          <Radar name="Sony" dataKey="sony" stroke="#0EA5E9" fill="#0EA5E9" fillOpacity={0.05} strokeWidth={1} />
-                          <Radar name="Bose" dataKey="bose" stroke="#6366F1" fill="#6366F1" fillOpacity={0.05} strokeWidth={1} />
-                          <Radar name="Samsung" dataKey="samsung" stroke="#555" fill="#555" fillOpacity={0.05} strokeWidth={1} />
-                          <Legend wrapperStyle={{ fontSize: '11px', color: '#888' }} iconType="line" />
-                        </RadarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-
-                  {/* Partnerships */}
-                  <div>
-                    <h4 className="text-xs text-[#555] uppercase tracking-wider mb-3">Partnership & Integration Opportunities</h4>
-                    <ul className="space-y-2">
-                      {result.ecosystem.partnerships.map((p, i) => (
-                        <li key={i} className="flex items-start gap-2 text-sm text-[#888]">
-                          <TrendingUp className="w-4 h-4 text-[#BFA46A] mt-0.5 shrink-0" />
-                          {p}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* Threats */}
-                  <div>
-                    <h4 className="text-xs text-[#555] uppercase tracking-wider mb-3">Threat Analysis</h4>
-                    <ul className="space-y-2">
-                      {result.ecosystem.threats.map((t, i) => (
-                        <li key={i} className="flex items-start gap-2 text-sm text-[#888]">
-                          <AlertTriangle className="w-4 h-4 text-yellow-500 mt-0.5 shrink-0" />
-                          {t}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* Growth Vectors */}
-                  <div>
-                    <h4 className="text-xs text-[#555] uppercase tracking-wider mb-3">Growth Vectors & Expansion</h4>
-                    <ul className="space-y-2">
-                      {result.ecosystem.growth.map((g, i) => (
-                        <li key={i} className="flex items-start gap-2 text-sm text-[#888]">
-                          <ArrowRight className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
-                          {g}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              </LayerSection>
-
-              {/* ═══ Verdict Panel ═══ */}
-              <div className="rounded-xl bg-[#111]/80 border border-[#BFA46A]/20 p-6 mt-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 rounded-lg bg-[#BFA46A]/15 flex items-center justify-center">
-                    <Target className="w-5 h-5 text-[#BFA46A]" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-semibold">Strategic Verdict</h3>
-                    <p className="text-xs text-[#666]">Recommended action based on 5-layer analysis</p>
-                  </div>
-                </div>
-
-                <div className="grid sm:grid-cols-4 gap-3 mb-6">
-                  {result.verdict.options.map((opt) => {
-                    const isRecommended = opt.action === result.verdict.recommended;
+              {/* L2 Anatomy */}
+              <LayerSection number={2} title="Anatomy & Technology" subtitle={`${result.anatomy.techStack.length} components identified`}
+                icon={Cpu} isOpen={openLayers.has(2)} onToggle={() => toggleLayer(2)} layerType="SILICON" color="#a78bfa">
+                <div className="space-y-3">
+                  {result.anatomy.techStack.map((t: any, i: number) => {
+                    const lt = t.layerType ? LAYER_TYPES[t.layerType as keyof typeof LAYER_TYPES] : null;
                     return (
-                      <div
-                        key={opt.action}
-                        className={`relative p-4 rounded-xl border transition-all ${
-                          isRecommended
-                            ? 'border-[#BFA46A]/40 bg-[#BFA46A]/5 glow-gold'
-                            : 'border-white/5 bg-[#0A0A0A]/60'
-                        }`}
-                        data-testid={`verdict-${opt.action.toLowerCase()}`}
-                      >
-                        {isRecommended && (
-                          <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2 py-0.5 bg-[#BFA46A] text-[#0A0A0A] text-[10px] font-bold rounded-full uppercase tracking-wider">
-                            Recommended
-                          </span>
-                        )}
-                        <p className={`text-sm font-bold tracking-wider mb-1 ${isRecommended ? 'text-[#BFA46A]' : 'text-[#888]'}`}>
-                          {opt.action}
-                        </p>
-                        <p className={`text-2xl font-bold font-mono mb-2 ${isRecommended ? 'text-[#BFA46A]' : 'text-[#666]'}`}>
-                          {opt.confidence}%
-                        </p>
-                        <p className="text-xs text-[#777] leading-relaxed">{opt.rationale}</p>
+                      <div key={i} className="flex gap-3 p-3 rounded-lg bg-white/[0.02] border border-white/5">
+                        <div>
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <p className="text-sm font-medium">{t.name}</p>
+                            {lt && (
+                              <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3,
+                                background: `${lt.color}15`, color: lt.color, border: `1px solid ${lt.color}30`,
+                                fontFamily: "'Courier New', monospace" }}>
+                                {lt.tag}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-[#666]">{t.role}</p>
+                        </div>
                       </div>
                     );
                   })}
+                  {result.anatomy.patents.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-xs text-[#666] mb-2">Key Patents</p>
+                      {result.anatomy.patents.map((p: string, i: number) => (
+                        <div key={i} className="text-xs text-[#888] font-mono py-1 border-t border-white/5">{p}</div>
+                      ))}
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs text-[#666] mb-1">Manufacturing Complexity</p>
+                    <ScoreBar score={result.anatomy.manufacturingComplexity} max={10} color="#a78bfa" />
+                  </div>
                 </div>
+              </LayerSection>
+
+              {/* L3 Process */}
+              <LayerSection number={3} title="Process & Supply Chain" subtitle={`${result.process.supplyChain.length} supply dependencies`}
+                icon={Factory} isOpen={openLayers.has(3)} onToggle={() => toggleLayer(3)} layerType="SUPPLY_CHAIN" color="#f87171">
+                <div className="space-y-4">
+                  <p className="text-sm text-[#999] leading-relaxed">{result.process.overview}</p>
+                  <div>
+                    <p className="text-xs text-[#666] mb-2">Supply Chain Dependencies</p>
+                    {result.process.supplyChain.map((s: any, i: number) => (
+                      <div key={i} className="flex items-center justify-between py-2 border-b border-white/5">
+                        <span className="text-sm text-[#ccc]">{s.dependency}</span>
+                        <span className={`text-xs font-mono px-2 py-0.5 rounded ${
+                          s.risk === "High" ? "bg-red-500/10 text-red-400" :
+                          s.risk === "Medium" ? "bg-amber-500/10 text-amber-400" : "bg-green-500/10 text-green-400"}`}>
+                          {s.risk}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </LayerSection>
+
+              {/* L4 Economics */}
+              <LayerSection number={4} title="Economics & Market" subtitle={`TAM ${result.economics.market.tam}`}
+                icon={DollarSign} isOpen={openLayers.has(4)} onToggle={() => toggleLayer(4)} layerType="PRICING" color="#fbbf24">
+                <div className="space-y-4">
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { label: "COGS", val: `$${result.economics.unitEconomics.cogs}` },
+                      { label: "MSRP", val: `$${result.economics.unitEconomics.msrp}` },
+                      { label: "Gross Margin", val: `${result.economics.unitEconomics.margin}%` },
+                    ].map(({ label, val }) => (
+                      <div key={label} className="p-3 rounded-lg bg-white/[0.02] border border-white/5 text-center">
+                        <p className="text-xs text-[#666] mb-1">{label}</p>
+                        <p className="text-base font-mono font-bold text-[#BFA46A]">{val}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    {[["TAM", result.economics.market.tam], ["SAM", result.economics.market.sam], ["SOM", result.economics.market.som]].map(([label, val]) => (
+                      <div key={label} className="p-2 rounded-lg bg-white/[0.02] border border-white/5">
+                        <p className="text-xs text-[#555] font-mono mb-0.5">{label}</p>
+                        <p className="text-xs text-[#aaa]">{val}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </LayerSection>
+
+              {/* L5 Ecosystem */}
+              <LayerSection number={5} title="Ecosystem & Competitive" subtitle={`${result.ecosystem.threats.length} threats · ${result.ecosystem.growth.length} growth vectors`}
+                icon={Globe} isOpen={openLayers.has(5)} onToggle={() => toggleLayer(5)} layerType="MOAT" color="#22d4d4">
+                <div className="space-y-4">
+                  {result.ecosystem.competitiveData.length > 0 && (
+                    <div>
+                      <p className="text-xs text-[#666] mb-3">Competitive Dimensions</p>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <BarChart data={result.ecosystem.competitiveData} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" />
+                          <XAxis dataKey="metric" tick={{ fontSize: 10, fill: "#555" }} />
+                          <YAxis tick={{ fontSize: 10, fill: "#555" }} domain={[0, 100]} />
+                          <Tooltip contentStyle={{ background: "#111", border: "1px solid #222", fontSize: 12 }} />
+                          <Bar dataKey="apple" name="Subject" fill="#BFA46A" radius={[2, 2, 0, 0]} />
+                          <Bar dataKey="sony"   name="Comp A"  fill="#333"   radius={[2, 2, 0, 0]} />
+                          <Bar dataKey="bose"   name="Comp B"  fill="#2a2a2a" radius={[2, 2, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-[#666] mb-2">Growth Vectors</p>
+                      {result.ecosystem.growth.map((g: string, i: number) => (
+                        <div key={i} className="flex items-start gap-2 py-1.5">
+                          <TrendingUp size={12} className="text-green-400 mt-0.5 flex-shrink-0" />
+                          <span className="text-xs text-[#999]">{g}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#666] mb-2">Threats</p>
+                      {result.ecosystem.threats.map((t: string, i: number) => (
+                        <div key={i} className="flex items-start gap-2 py-1.5">
+                          <AlertTriangle size={12} className="text-amber-400 mt-0.5 flex-shrink-0" />
+                          <span className="text-xs text-[#999]">{t}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </LayerSection>
+            </div>
+
+            {/* Strategic Verdict — with evidence nodes (Gap 5) */}
+            <div className="rounded-xl bg-[#111]/60 border border-white/5 p-5 mb-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Target size={16} className="text-[#BFA46A]" />
+                <h3 className="text-base font-semibold">Strategic Verdict</h3>
+                {isDiscovery && (
+                  <span style={{ fontSize: 10, color: "#f59e0b", fontFamily: "'Courier New', monospace", marginLeft: "auto" }}>
+                    DISCOVERY MODE — low confidence
+                  </span>
+                )}
               </div>
-
-              {/* ARCHON Ψ Gateway Panel */}
-              <ArchonGatewayPanel analysisScores={analysisScores} />
-
-              {/* Footer */}
-              <div className="pt-6 border-t border-white/5 flex flex-col md:flex-row items-center justify-between gap-4">
-                <p className="text-xs text-[#444]">&copy; 2026 Waveform Tech. All rights reserved.</p>
-                <PerplexityAttribution />
+              <div className="space-y-3">
+                {result.verdict.options.map((opt: any) => (
+                  <MoveCard
+                    key={opt.action}
+                    action={opt.action}
+                    confidence={opt.confidence}
+                    rationale={opt.rationale}
+                    evidenceNodes={opt.evidenceNodes}
+                  />
+                ))}
               </div>
             </div>
-          )}
 
-          {/* Footer when no analysis */}
-          {!result && !analyzing && (
-            <div className="mt-auto pt-24">
-              <div className="pt-6 border-t border-white/5 flex flex-col md:flex-row items-center justify-between gap-4">
-                <p className="text-xs text-[#444]">&copy; 2026 Waveform Tech. All rights reserved.</p>
-                <PerplexityAttribution />
+            {/* Provenance Rail — honest labeling (Gap 4) */}
+            <div className="rounded-xl bg-[#111]/60 border border-white/5 p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <Shield size={16} className="text-[#555]" />
+                <h3 className="text-sm font-semibold text-[#888]">Provenance</h3>
+              </div>
+              <div className="space-y-2 font-mono text-xs">
+                {[
+                  {
+                    label: "DATA SOURCE",
+                    value: isDemo ? "CortexChain demo KB — not a live analysis"
+                      : isDiscovery ? "Category inference — no primary sources linked"
+                      : "OpenRouter · Qwen3-VL-32B · public product knowledge",
+                    badge: isDemo ? "DEMO" : isDiscovery ? "ESTIMATED" : "LIVE",
+                    badgeColor: isDemo ? "#a78bfa" : isDiscovery ? "#f59e0b" : "#34d399",
+                  },
+                  {
+                    label: "SCORE BASIS",
+                    value: "QTAC₇ v1.0 · CB-285 · server-side computed",
+                    badge: "FORMULA",
+                    badgeColor: "#22d4d4",
+                  },
+                  {
+                    label: "CONFIDENCE",
+                    value: `${(computedConfidence * 100).toFixed(0)}% — computed from coverage + match + source count`,
+                    badge: computedConfidence >= 0.75 ? "HIGH" : computedConfidence >= 0.55 ? "MEDIUM" : "LOW",
+                    badgeColor: computedConfidence >= 0.75 ? "#34d399" : computedConfidence >= 0.55 ? "#fbbf24" : "#f87171",
+                  },
+                  {
+                    label: "Ω-GAP",
+                    value: `${omegaGap.toFixed(1)} — |frontier ${categoryFrontier} − stone ${stoneScore.toFixed(1)}|`,
+                    badge: omegaGap <= 1.0 ? "TIGHT" : omegaGap <= 2.5 ? "MODERATE" : "WIDE",
+                    badgeColor: omegaGap <= 1.0 ? "#34d399" : omegaGap <= 2.5 ? "#fbbf24" : "#f87171",
+                  },
+                  {
+                    label: "CANON STATUS",
+                    value: audit.canSeal
+                      ? "Ready to seal — HARNESS checks passed"
+                      : `Not sealable — ${audit.errors[0] || "coverage < Tier 3 threshold"}`,
+                    badge: audit.canSeal ? "CANON ELIGIBLE" : "NOT SEALABLE",
+                    badgeColor: audit.canSeal ? "#34d399" : "#f87171",
+                  },
+                ].map(({ label, value, badge, badgeColor }) => (
+                  <div key={label} className="flex items-start gap-3 py-2 border-b border-white/5">
+                    <span className="text-[#555] w-28 flex-shrink-0">{label}</span>
+                    <span className="text-[#888] flex-1">{value}</span>
+                    <span style={{
+                      fontSize: 9, padding: "2px 6px", borderRadius: 3,
+                      background: `${badgeColor}15`, color: badgeColor, border: `1px solid ${badgeColor}30`,
+                      whiteSpace: "nowrap", flexShrink: 0,
+                    }}>{badge}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Export — honest stubs (Gap 6) */}
+              <div className="flex gap-2 mt-4">
+                <button
+                  onClick={() => {
+                    const blob = new Blob([JSON.stringify({
+                      factorizer_version: "v2.0",
+                      subject: result.productName,
+                      audit_grade: audit.grade,
+                      audit_tier: audit.tier,
+                      provenance_mode: audit.provenanceMode,
+                      computed_confidence: computedConfidence,
+                      omega_gap: omegaGap,
+                      stone_score: stoneScore,
+                      match_confidence: matchConfidence,
+                      is_demo: isDemo,
+                      generated_at: new Date().toISOString(),
+                      result,
+                    }, null, 2)], { type: "application/json" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url; a.download = `factorizer-${result.productName.replace(/\s+/g, "-").toLowerCase()}.json`;
+                    a.click(); URL.revokeObjectURL(url);
+                  }}
+                  className="flex-1 py-2 rounded-lg text-xs font-mono border border-white/10 text-[#888] hover:text-white hover:border-white/20 transition-colors"
+                >
+                  Export JSON
+                </button>
+                <button
+                  disabled={!audit.canSeal}
+                  onClick={() => alert("Canon seal requires HARNESS verification. Coming in v2.1 — audit grade must be A with primary sources linked.")}
+                  className="flex-1 py-2 rounded-lg text-xs font-mono border transition-colors"
+                  style={{
+                    borderColor: audit.canSeal ? "rgba(52,211,153,0.4)" : "rgba(255,255,255,0.06)",
+                    color: audit.canSeal ? "#34d399" : "#333",
+                    cursor: audit.canSeal ? "pointer" : "not-allowed",
+                  }}
+                >
+                  {audit.canSeal ? "Seal to Canon →" : "Seal Locked (Grade < A)"}
+                </button>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </main>
+
+      <PerplexityAttribution />
       <WaitlistCapture />
     </div>
   );
 }
-
