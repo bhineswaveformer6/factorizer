@@ -1,16 +1,26 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+
+// Canonical stack truth — OpenRouter + Qwen3-VL-32B, no OpenAI, no NVIDIA NIM
+// Updated: 2026-04-23 | schema_version: factorizer@2.0 | prompt_version: v1.3
 export default function handler(_req: VercelRequest, res: VercelResponse) {
   res.json({
     status: "operational",
+    schema_version: "factorizer@2.0",
+    prompt_version: "v1.3",
     engines: {
-      factorizer: "nvidia-nim/phi-3.5-vision-instruct",
-      reality_lens: "nvidia-nim/nemotron-super-49b-v1.5",
-      copilot: "nvidia-nim/mistral-nemotron",
+      factorizer:   "qwen/qwen3-vl-32b-instruct",
+      reality_lens: "qwen/qwen3-vl-32b-instruct",
     },
-    inference: "NVIDIA NIM · Inception Member",
-    fallback_cascade: ["mistral-nemotron", "nemotron-49b", "llama-3.3-70b"],
-    version: "3.1.0-nim",
-    by: "CortexChain, Inc. · ARCHON Ψ (Hines, B.)",
+    inference: {
+      provider: "OpenRouter",
+      model: "qwen/qwen3-vl-32b-instruct",
+      context_window: 131072,
+      multimodal: true,
+    },
+    pink_computed: true,
+    stone_computed: true,
+    openai: false,
+    by: "CortexChain, Inc. · ARCHON Ψ (Hines, B.) · Waveform Tech",
     timestamp: new Date().toISOString(),
   });
 }
